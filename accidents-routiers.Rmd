@@ -1,0 +1,3544 @@
+---
+title: "Untitled"
+output: html_document
+date: "2026-11-04"
+---
+
+### 1.INTRODUCTION GÉNÉRALE
+
+La sécurité routière constitue un enjeu majeur de santé publique et de société. Les accidents de la circulation entraînent chaque année des conséquences humaines, sociales et économiques importantes. Leur compréhension nécessite une analyse approfondie des circonstances dans lesquelles ils surviennent, ainsi que des caractéristiques des personnes et des véhicules impliqués.
+
+Dans ce contexte, l'analyse statistique des données constitue un outil essentiel pour identifier les tendances, mettre en évidence les situations les plus fréquemment associées aux accidents et mieux comprendre les facteurs liés à leur gravité.
+
+En France, les données relatives aux accidents corporels de la circulation sont notamment collectées dans les fichiers BAAC (Bulletins d'Analyse des Accidents Corporels de la circulation). Ces données fournissent des informations détaillées sur les caractéristiques des accidents, les lieux où ils se produisent, les usagers impliqués et les véhicules concernés.
+
+Le présent projet porte sur l'analyse des accidents corporels de la route enregistrés en France au cours de l'année 2024, à partir des données BAAC. Il s'inscrit dans une démarche de Data Science visant à exploiter, préparer, analyser et valoriser des données réelles à l'aide de méthodes statistiques et d'outils informatiques.
+
+*Problématique*
+
+Dans quelle mesure l'analyse statistique des données BAAC 2024 permet-elle de caractériser la répartition des accidents corporels de la route en France selon leurs dimensions temporelles, géographiques, environnementales et humaines, ainsi que selon les véhicules impliqués ?
+
+*Objectifs du projet*
+
+Ce travail poursuit plusieurs objectifs :
+- Explorer et comprendre la structure des données BAAC 2024.
+- Nettoyer et préparer les différentes tables afin de construire une base analytique cohérente.
+- Étudier la répartition temporelle des accidents selon les mois, les jours et les heures.
+- Analyser leur distribution géographique et les conditions environnementales associées.
+- Étudier le profil des usagers impliqués selon l'âge, le sexe et la gravité des blessures.
+- Examiner les catégories de véhicules impliqués et leur association avec la gravité des accidents.
+- Concevoir un tableau de bord interactif avec R Shiny afin de faciliter l'exploration des résultats.
+Démarche méthodologique
+
+Le projet repose sur une démarche structurée en plusieurs étapes : collecte et exploration des données, nettoyage et préparation des tables, analyse exploratoire, visualisation des résultats et développement d'une application interactive.
+
+Les analyses sont réalisées principalement avec le langage R et ses bibliothèques dédiées à la manipulation, à l'analyse et à la visualisation des données.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### 2. Présentation des données
+2.1. Source et origine des données
+
+Les données utilisées dans cette étude proviennent de la base BAAC (Bulletins d'Analyse des Accidents Corporels de la circulation), qui recense les accidents corporels de la circulation routière enregistrés en France.
+
+L'étude porte sur l'année 2024. Les fichiers exploités contiennent des informations relatives aux caractéristiques des accidents, à leur localisation, aux usagers impliqués et aux véhicules concernés.
+
+Ces données permettent de réaliser une analyse descriptive multidimensionnelle des accidents corporels de la route.
+
+### 2.2. Description des fichiers
+L'analyse repose sur quatre fichiers complémentaires :
+Fichier	Dimensions observées	Contenu
+carac	54 402 lignes × 15 colonnes	Caractéristiques générales des accidents
+lieux	70 248 lignes × 18 colonnes	Informations relatives aux lieux et aux conditions de circulation
+usagers	125 187 lignes × 16 colonnes	Informations sur les personnes impliquées
+vehicules	92 678 lignes × 11 colonnes	Informations sur les véhicules impliqués
+
+### 2.3. Structure et granularité des données
+Les quatre fichiers ne possèdent pas la même granularité.
+- Le fichier carac constitue la table de référence pour les accidents : chaque ligne correspond à un accident identifié par Num_Acc.
+- Le fichier lieux peut contenir plusieurs enregistrements pour un même accident, comme le montre l'examen de l'accident 202400050330.
+- Le fichier usagers contient plusieurs lignes lorsqu'un accident implique plusieurs personnes.
+- Le fichier vehicules contient plusieurs lignes lorsqu'un accident implique plusieurs véhicules.
+Cette différence de granularité constitue un point important de la préparation des données. Une jointure directe de toutes les tables pourrait provoquer une multiplication artificielle des lignes et fausser les effectifs statistiques.
+### 2.4. Choix de la base analytique
+Afin de conserver une observation par accident, le fichier carac est utilisé comme référence. Les informations relatives à la gravité des accidents sont agrégées à partir du fichier usagers, tandis que les informations relatives au nombre de véhicules sont calculées à partir du fichier vehicules.
+
+Le fichier lieux est conservé séparément pour les analyses portant sur les caractéristiques géographiques et environnementales, compte tenu de ses enregistrements multiples pour certains accidents.
+
+Cette organisation permet de distinguer les analyses réalisées au niveau de l'accident de celles réalisées au niveau de l'usager ou du véhicule.
+
+
+
+*Chargement des fichiers*
+```{r}
+list.files("data")
+```
+
+```{r}
+library(dplyr)
+library(readr)
+```
+
+*Les pakages*
+
+```{r install, eval=FALSE}
+install.packages(c("dplyr", "readr", "ggplot2", "lubridate",
+                   "shiny", "plotly", "leaflet", "tidyr", "scales", "knitr"))
+```
+
+
+
+```{r}
+setdiff(c("dplyr", "readr", "ggplot2", "lubridate", "shiny", "plotly", "leaflet"), rownames(installed.packages()))
+```
+
+
+
+
+
+*Noms des fichiers* 
+```{r}
+f_carac <- list.files("data", pattern = "carac", full.names = TRUE)
+f_lieux <- list.files("data", pattern = "lieux", full.names = TRUE)
+f_usag <- list.files("data", pattern = "usagers.*\\.csv$",
+                     full.names = TRUE, ignore.case = TRUE)
+f_vehic <- list.files("data", pattern = "vehicules", full.names = TRUE)
+
+f_carac; f_lieux; f_usag; f_vehic
+```
+
+*lecture des fichiers* 
+```{r}
+library(dplyr)
+library(readr)
+carac <- read_delim(f_carac, delim = ";",
+                    col_types = cols(Num_Acc = col_character()),
+                    guess_max = Inf,
+                    show_col_types = FALSE)
+
+lieux <- read_delim(f_lieux, delim = ";",
+                    col_types = cols(Num_Acc = col_character()),
+                    guess_max = Inf,
+                    show_col_types = FALSE)
+
+usagers <- read_delim(f_usag, delim = ";",
+                      col_types = cols(Num_Acc = col_character()),
+                      guess_max = Inf,
+                      show_col_types = FALSE)
+```
+
+*Analyse des dimensions*
+
+```{r}
+dim(carac)
+dim(usagers)
+dim(lieux)
+```
+
+
+*Observation*:
+
+caractéristique (carac):54402 accidents enrégistrés (qui correspond au nombre de ligne)
+
+lieux:70248 lignes,soit 15846 lignes de plus que carac
+
+usagers:125187 lignes ,soit plusieurs usagers par accident en moyenne
+
+
+Ainsi on constate que la table lieux contient plus de lignes que carac.
+
+*Question*:le pourquoi? 
+
+
+
+
+ *Nom des variables*
+```{r}
+names(carac)
+
+```
+
+```{r}
+names(usagers)
+```
+
+
+```{r}
+names(lieux)
+```
+
+*Affichage des tables*
+```{r}
+glimpse(carac)
+```
+donc l'etude montre qu'il y'a eu 54402 accident corporels recensés en Mars 2024
+
+
+
+
+```{r}
+glimpse(usagers)
+```
+
+
+
+
+```{r}
+glimpse(lieux)
+```
+ *Regardons pourquoi la table lieux contient plus de lignes que la table carac*
+
+*Verification des doublons*
+
+```{r}
+# Nombre de Num_Acc distincts
+n_distinct(carac$Num_Acc)
+n_distinct(lieux$Num_Acc)
+n_distinct(usagers$Num_Acc)
+
+# Nombre de doublons
+sum(duplicated(carac$Num_Acc))
+sum(duplicated(lieux$Num_Acc))
+sum(duplicated(usagers$Num_Acc))
+```
+
+*Conclusion*:
+-carac : pas de doublon (zéro)
+- lieux : plusieurs enregistrements peuvent correspondre au même accident.
+- usagers : plusieurs personnes peuvent être impliquées dans un même accident.
+
+Donc la table carac constitue notre référence pour le nombre d'accidents. Les tables lieux et usagers nécessitent une attention particulière avant les jointures.
+
+
+*Verification s'il existe des identifiant manquants*
+```{r}
+# Vérifier les identifiants manquants
+sum(is.na(carac$Num_Acc))
+sum(is.na(lieux$Num_Acc))
+sum(is.na(usagers$Num_Acc))
+
+
+```
+Pas de valeur manquante
+
+```{r}
+# Examiner les doublons dans lieux
+lieux |>
+  count(Num_Acc) |>
+  filter(n > 1) |>
+  arrange(desc(n))
+```
+On constate plusieurs duplication d'enregistrement dans la table lieux
+Donc on  examine d'ou provient ces duplications.
+
+
+*Examen d'un accident*
+```{r}
+#Prenons l'accident numero 202400050330 qui possede 5 lignes par example
+lieux |>
+  filter(Num_Acc == "202400050330") |>
+  glimpse()
+```
+
+
+```{r}
+lieux |>
+  filter(Num_Acc == "202400050330") |>
+  select(Num_Acc, everything())
+```
+
+*comparaison automatique des 5 lignes*
+```{r}
+test_lieux <- lieux |>
+  filter(Num_Acc == "202400050330")
+
+# Nombre de lignes
+nrow(test_lieux)
+
+# Nombre de lignes strictement distinctes
+nrow(distinct(test_lieux))
+
+# Comparaison des lignes
+all(duplicated(test_lieux)[-1])
+```
+Observation:
+5 enrégistrements
+5 lignes sont differents
+Elles ne sont pas toutes des doublons
+
+Donc pas besoin de supprimer ces lignes
+
+*Identification des colonnes qui changent(variables qui changent)*
+
+    *comparaison précis de ces 5 enrégistrements*
+
+```{r}
+test_lieux |>
+  summarise(
+    across(
+      everything(),
+      ~ n_distinct(.x, na.rm = FALSE)
+    )
+  )
+```
+Les resultats montrent que ces 5 lignes ne sont pas des doublons technique mais plutot elles contiennet des informations differentes.
+
+Plusieurs enrégistrement décrivent des caractéristique de lieux different pour un meme accident
+
+ *Examinons les 5 valeur de voie ainsi que les autres variables qui changent*
+```{r}
+test_lieux |>
+  select(
+    Num_Acc,
+    voie,
+    circ,
+    nbv,
+    prof,
+    pr,
+    pr1,
+    situ
+  )
+```
+
+On constate que les informations relatives à la configuration routière varient d'une ligne à l'autre.
+Cela peut correspondre à un accident situé dans une zone complexe, avec plusieurs voies ou branches de circulation renseignées.
+Voir le doc(BAAC) sur le site
+
+
+ *Vérification de la table usagers*
+```{r}
+# Examinons les usagers d'un même accident
+usagers |>
+  filter(Num_Acc == "202400050330") |>
+  select(Num_Acc, catu, grav, sexe, an_nais)
+```
+
+
+```{r}
+# Nombre d'usagers pour cet accident
+usagers |>
+  filter(Num_Acc == "202400050330") |>
+  summarise(nb_usagers = n())
+```
+
+on constate que 2 personnes sont impliquées dans un meme accident
+d'ou la répétition sur la table usagers.
+
+
+*Construction de la table de gravité par accident(grav_acc)*
+
+*l'idée* : si deux personnes sont impliquées dans un accident et qu'une seule est hospitalisée 
+alors l'accident sera classé comme grave
+
+```{r}
+grav_acc <- usagers |>
+  group_by(Num_Acc) |>
+  summarise(
+    nb_usagers = n(),
+    grave = any(grav %in% c(2, 3)),
+    tue = any(grav == 2),
+    .groups = "drop"
+  )
+```
+
+
+```{r}
+# Dimensions
+dim(grav_acc)
+
+# Nombre d'accidents distincts
+n_distinct(grav_acc$Num_Acc)
+
+# Répartition des accidents graves
+table(grav_acc$grave, useNA = "ifany")
+
+# Nombre d'accidents avec au moins un tué
+sum(grav_acc$tue, na.rm = TRUE)
+```
+54402 accidents distincts
+19658 accidents graves(36,13%)
+3226 accidents avec au moins un tué
+34744 accidents classé non graves(63,87%)
+Ces chiffres décrivent les accidents corporels enregistrés dans la base 2024, et non l'ensemble des accidents de circulation.
+
+
+```{r}
+names(grav_acc)
+```
+
+*Construction de la table accidents*
+Jointure
+
+```{r}
+accidents <- carac |>
+  left_join(lieux, by = "Num_Acc") |>
+  left_join(grav_acc, by = "Num_Acc")
+```
+
+*Verification de la dimension*
+```{r}
+# Nombre de lignes après jointure
+nrow(accidents)
+
+# Nombre d'accidents distincts
+n_distinct(accidents$Num_Acc)
+
+# Vérifier les doublons
+sum(duplicated(accidents$Num_Acc))
+
+# Vérifier la structure
+dim(accidents)
+```
+```{r}
+names(accidents)
+```
+accident :15846 doublons
+Remarque: cette jointure marche techniquement mais ne respecte pas encore l'objectif.
+C'est à dire:une ligne par accident
+
+*Construction d'une table lieux_acc*
+verification d'abord
+```{r}
+# Répartition du nombre de lignes par accident dans lieux
+lieux |>
+  count(Num_Acc, name = "nb_lieux") |>
+  count(nb_lieux, name = "nb_accidents") |>
+  arrange(nb_lieux)
+```
+*Interprétation* : 38 757 accidents ont une seule ligne dans lieux, tandis que les autres en ont plusieurs. Ces lignes ne sont pas nécessairement des doublons : nous avons déjà vérifié qu'elles peuvent contenir des informations différentes.
+
+
+*Construction de la table au niveau accident*
+Pour respecter l'objectif d'avoir une seule ligne par accident, on va d'abord joindre carac et grav_acc. on gardera lieux séparément pour les analyses liées aux routes.
+
+```{r}
+accidents <- carac |>
+  left_join(grav_acc, by = "Num_Acc")
+```
+
+```{r}
+dim(accidents)
+
+n_distinct(accidents$Num_Acc)
+
+sum(duplicated(accidents$Num_Acc))
+```
+- 54 402 lignes : nombre total d'accidents.
+- 18 colonnes : variables de caractéristiques et indicateurs de gravité.
+- 54 402 identifiants distincts.
+- 0 doublon sur Num_Acc.
+Objectif une ligne par accident est atteint.
+
+```{r}
+glimpse(accidents)
+```
+
+*Verification des valeurs manquantes*
+```{r}
+colSums(is.na(accidents))
+```
+on constate qu'il y'a 2 valeur manquantes sur 54402 accidents
+
+*Vérification d'ou ça provient les 2 valeurs manquantes*
+```{r}
+accidents |>
+  filter(is.na(adr)) |>
+  select(Num_Acc, everything())
+```
+
+La colonne adr (adresse) est manquante pour ces deux observations dont Num_Acc (202400000189) et (202400004432). En revanche, nous avons des coordonnées géographiques pour le premier accident (202400000189) : latitude 14,61523000 et longitude -61,01390000.
+
+Décision : on conserve les deux accidents. Il ne faut ni supprimer ces lignes ni remplacer arbitrairement les adresses manquantes.
+
+*Vérication des types de variables*
+```{r}
+str(accidents)
+```
+
+
+ *Véification des valeurs particulières(pour les variables numeriques)*
+```{r}
+accidents |>
+  summarise(
+    across(
+      where(is.numeric),
+      ~ sum(.x == -1, na.rm = TRUE)
+    )
+  )
+```
+
+*Vérification des codes -1 dans les variables qualitatives*
+```{r}
+accidents |>
+  summarise(
+    across(
+      where(is.character),
+      ~ sum(.x == "-1", na.rm = TRUE)
+    )
+  )
+```
+On a donc vérifié :
+- Les valeurs manquantes (NA) : seulement 2 dans adr.
+- Les codes -1 : aucun dans les variables numériques et caractères examinées.
+- Les identifiants Num_Acc : aucune duplication dans notre table accidents.
+
+*Vérification des doublons complets*
+```{r}
+sum(duplicated(accidents))
+```
+Pour la table accidents on a:
+54 402 accidents.
+54 402 identifiants uniques.
+0 doublon complet.
+2 valeurs manquantes dans adr.
+Aucun code -1 détecté.
+
+*Préparation des variables temporelles*
+On va créer une véritable variable de date à partir de jour,mois et an puis une variable permettant d'exploiter l'heure des accidents.
+
+```{r}
+library(lubridate)
+library(dplyr)
+
+accidents <- accidents |>
+  mutate(
+    date = make_date(
+      year = an,
+      month = as.integer(mois),
+      day = jour
+    ),
+    heure = hour(hrmn),
+    minute = minute(hrmn)
+  )
+
+
+```
+
+```{r}
+head(accidents |> select(Num_Acc, jour, mois, an, date, hrmn, heure, minute))
+
+```
+
+
+*Création des tranches horaires*
+
+Pour l'analyse des accidents selon les heures de la journée, on va  créer quatre périodes: 
+1. Nuit : 00h–05h59
+2. Matin : 06h–11h59
+3. Après-midi : 12h–17h59
+4. Soir : 18h–23h59
+
+```{r}
+accidents <- accidents |>
+  mutate(
+    periode = case_when(
+      heure >= 0 & heure < 6  ~ "Nuit",
+      heure >= 6 & heure < 12 ~ "Matin",
+      heure >= 12 & heure < 18 ~ "Après-midi",
+      heure >= 18 & heure < 24 ~ "Soir"
+    )
+  )
+```
+
+
+```{r}
+table(accidents$periode)
+```
+*Première observation* : l'après-midi concentre le plus grand nombre d'accidents dans notre jeu de données, avec environ 36,9 %. La nuit présente le plus faible effectif.
+
+ce sont des nombres d'accidents, pas des taux de risque rapportés au trafic.
+
+*Préparation des classes d'age*
+On va maintenant travailler sur la table usagers, car l'âge des personnes impliquées n'est pas dans la table accidents.
+
+```{r}
+names(usagers)
+```
+Ainsi pour connaitre l'age des usagers on va calculer l'année de l'accident(2024) et l'année de naissance de chaque usagers
+
+*Calcul de l'age des usagers*
+```{r}
+usagers <- usagers |>
+  mutate(
+    age = 2024 - an_nais
+  )
+```
+
+
+```{r}
+head(usagers |> select(Num_Acc, sexe, an_nais, age))
+```
+
+*Controle de l'age*
+on verifie s'il y'a des valeurs manquantes et les ages min et max
+```{r}
+summary(usagers$age)
+
+sum(is.na(usagers$age))
+
+sum(usagers$age < 0, na.rm = TRUE)
+```
+- Âge minimum : 0 an.
+- Âge maximum : 110 ans.
+- Âge moyen : 38,92 ans.
+- Âge médian : 36 ans.
+- Valeurs manquantes : 2 579.
+- Âges négatifs : 0.
+Les 2 579 valeurs manquantes représentent environ 2,06 % des 125 187 usagers.
+
+Création de la classe d'age:
+
+Classe	             Tranche d'âge
+Enfants	             Moins de 15 ans
+Adolescents          15–17 ans
+Jeunes adultes	     18–24 ans
+Adultes	             25–44 ans
+Adultes mûrs	       45–64 ans
+Seniors	             65 ans et plus
+
+
+```{r}
+usagers <- usagers |>
+  mutate(
+    classe_age = case_when(
+      age < 15 ~ "Enfants",
+      age <= 17 ~ "Adolescents",
+      age <= 24 ~ "Jeunes adultes",
+      age <= 44 ~ "Adultes",
+      age <= 64 ~ "Adultes mûrs",
+      age >= 65 ~ "Seniors",
+      TRUE ~ NA_character_
+    )
+  )
+```
+
+```{r}
+table(usagers$classe_age, useNA = "ifany")
+```
+*Observation* : les adultes de 25 à 44 ans constituent la catégorie la plus représentée parmi les usagers recensés.
+
+ces effectifs concernent les personnes impliquées, pas le nombre d'accidents.
+
+*Agregation des informations des usagers par accident*
+
+*Objectif*: c'est de rattacher les informations sur les usagers à la table accidents, qui contient une seule ligne par accident.
+
+On va d'abord calculer le nombre d'usagers par classe d'âge pour chaque accident.
+
+```{r}
+age_acc <- usagers |>
+  filter(!is.na(classe_age)) |>
+  count(Num_Acc, classe_age) |>
+  tidyr::pivot_wider(
+    names_from = classe_age,
+    values_from = n,
+    values_fill = 0,
+    names_prefix = "nb_"
+  )
+```
+
+
+```{r}
+dim(age_acc)
+
+n_distinct(age_acc$Num_Acc)
+
+head(age_acc)
+```
+- 54 402 lignes
+- 54 402 accidents distincts
+- 7 colonnes : l'identifiant Num_Acc et les six classes d'âge.
+La table contient donc une seule ligne par accident. Chaque colonne nb_... indique le nombre d'usagers appartenant à une classe d'âge pour cet accident.
+
+Par exemple, pour 202400000005 :
+- 1 adulte ;
+- 2 jeunes adultes ;
+- 1 adulte mûr ;
+- aucun adolescent ni senior.
+- aucun enfant
+
+*Jointure des informations d'age à l'accidents*
+```{r}
+accidents <- accidents |>
+  left_join(age_acc, by = "Num_Acc")
+```
+
+```{r}
+dim(accidents)
+
+n_distinct(accidents$Num_Acc)
+
+sum(duplicated(accidents$Num_Acc))
+
+colSums(is.na(accidents))
+```
+
+
+
+```{r}
+names(accidents)
+```
+
+```{r}
+sum(accidents$nb_Adultes.x != accidents$nb_Adultes.y)
+sum(accidents$nb_Adultes.x != accidents$nb_Adultes)
+
+sum(accidents$`nb_Jeunes adultes.x` != accidents$`nb_Jeunes adultes.y`)
+sum(accidents$`nb_Jeunes adultes.x` != accidents$`nb_Jeunes adultes`)
+
+sum(accidents$nb_Seniors.x != accidents$nb_Seniors.y)
+sum(accidents$nb_Seniors.x != accidents$nb_Seniors)
+
+sum(accidents$nb_Adolescents.x != accidents$nb_Adolescents.y)
+sum(accidents$nb_Adolescents.x != accidents$nb_Adolescents)
+
+sum(accidents$`nb_Adultes mûrs.x` != accidents$`nb_Adultes mûrs.y`)
+sum(accidents$`nb_Adultes mûrs.x` != accidents$`nb_Adultes mûrs`)
+
+sum(accidents$nb_Enfants.x != accidents$nb_Enfants.y)
+sum(accidents$nb_Enfants.x != accidents$nb_Enfants)
+```
+
+*La table accident à garder*
+```{r}
+accidents <- accidents |>
+  select(-ends_with(".x"), -ends_with(".y"))
+```
+
+
+```{r}
+dim(accidents)
+
+names(accidents)
+
+sum(duplicated(accidents$Num_Acc))
+```
+*Vérifions que si tout est en ordre*
+```{r}
+accidents |>
+  select(
+    Num_Acc,
+    nb_Enfants,
+    `nb_Adolescents`,
+    `nb_Jeunes adultes`,
+    `nb_Adultes`,
+    `nb_Adultes mûrs`,
+    nb_Seniors
+  ) |>
+  head()
+```
+
+```{r}
+dim(accidents)
+```
+
+
+
+*Examiner de la table Véhicules(4 ieme et dernière table)*
+```{r}
+library(readr)
+library(dplyr)
+
+f_vehic <- list.files("data", pattern = "hicules.*\\.csv$",
+                      full.names = TRUE, ignore.case = TRUE)
+f_vehic
+stopifnot(length(f_vehic) == 1)
+
+vehicules <- read_delim(f_vehic, delim = ";",
+                        col_types = cols(Num_Acc = col_character()),
+                        guess_max = Inf,
+                        show_col_types = FALSE)
+
+```
+
+
+
+```{r}
+names(vehicules)
+```
+
+Num_Acc : identifiant de l'accident.
+id_vehicule : identifiant du véhicule.
+catv : catégorie du véhicule.
+manv : manœuvre effectuée.
+choc : point de choc initial.
+motor : type de motorisation.
+
+```{r}
+dim(vehicules)
+
+```
+
+
+*Vérification des identifiants des accidents*
+
+
+Comme pour les autres tables, on va vérifier le nombre d'accidents distincts et les répétitions de Num_Acc.
+```{r}
+n_distinct(vehicules$Num_Acc)
+
+sum(duplicated(vehicules$Num_Acc))
+```
+1. Interprétation:
+- 92 678 lignes : nombre total de véhicules recensés.
+- 54 402 accidents distincts : chaque accident est identifié par Num_Acc.
+- 38 376 répétitions : plusieurs véhicules sont associés à un même accident.
+Cela signifie qu'un accident peut impliquer plusieurs véhicules.
+
+Donc pas besoin de supprimer aucune ligne car ces répétitions sont normales.
+
+*Examen des véhicules par accident*
+
+on va vérifié combien de véhicules sont impliqués dans chaque accident
+```{r}
+vehicules |>
+  count(Num_Acc, name = "nb_vehicules") |>
+  count(nb_vehicules, name = "nb_accidents") |>
+  arrange(nb_vehicules)
+```
+Première observation : les accidents impliquant deux véhicules sont les plus fréquents, avec 29968 accidents. Les accidents impliquant un seul véhicule arrivent en deuxième position.
+
+Nous constatons également quelques accidents impliquant jusqu'à 11 véhicules.
+
+*Création d'une table agrégée par accident*
+
+Comme pour les usagers, nous allons construire une table vehicules_acc qui contient une seule ligne par accident et le nombre de véhicules impliqués.
+```{r}
+vehicules_acc <- vehicules |>
+  count(Num_Acc, name = "nb_vehicules")
+```
+
+
+```{r}
+dim(vehicules_acc)
+
+n_distinct(vehicules_acc$Num_Acc)
+
+head(vehicules_acc)
+```
+
+ *Joindre les véhicules à accidents*
+
+Nous allons enrichir notre table principale avec le nombre de véhicules impliqués dans chaque accident.
+```{r}
+accidents <- accidents |>
+  left_join(vehicules_acc, by = "Num_Acc")
+```
+
+```{r}
+dim(accidents)
+
+n_distinct(accidents$Num_Acc)
+
+sum(duplicated(accidents$Num_Acc))
+
+sum(is.na(accidents$nb_vehicules))
+```
+
+*Analyse des catégories de véhicules*
+cela nous permettra de connaitre les catégories les plus représentées dans les accidents
+```{r}
+table(vehicules$catv, useNA = "ifany")
+```
+
+```{r}
+sort(table(vehicules$catv), decreasing = TRUE)
+```
+
+
+
+*Observation*
+La catégorie 7 domine très largement avec 53 911 véhicules, suivie de :
+- Catégorie 33 : 7 777 véhicules.
+- Catégorie 10 : 7 062 véhicules.
+- Catégorie 1 : 5 045 véhicules.
+- Catégorie 2 : 3 090 véhicules.
+Nous avons également une valeur -1 et 287 valeurs codées 0.
+
+
+précaution
+ code 0:287 vehicules
+ code -1:1 vehicule
+
+
+*Examinons les deux valeurs particulières*
+```{r}
+vehicules |>
+  filter(catv %in% c(-1, 0)) |>
+  select(Num_Acc, id_vehicule, num_veh, catv)
+```
+
+
+ *Interprétation*
+D'après la documentation BAAC, le code 0 de la variable catv signifie véhicule indéterminable. Le code -1 correspond à une valeur non renseignée dans certaines nomenclatures. 
+
+
+attention:
+on a affiché seulement les 10 premières lignes, alors qu'on a 287 véhicules codés 0 et un véhicule codé -1
+
+
+ *Vérification des modalités complètes*
+```{r}
+vehicules |>
+  filter(catv %in% c("0", "-1")) |>
+  count(catv, sort = TRUE)
+```
+
+*les autres valeurs associées*
+```{r}
+vehicules |>
+  filter(catv %in% c("0", "-1")) |>
+  summarise(
+    nb_vehicules = n(),
+    nb_obs_manquantes = sum(is.na(obs)),
+    nb_manv_manquantes = sum(is.na(manv)),
+    nb_choc_manquantes = sum(is.na(choc))
+  )
+```
+
+- 287 véhicules ont catv = "0".
+- 1 véhicule a catv = "-1" dans l'ensemble des données.
+- Pour les 287 véhicules de catégorie "0", les variables obs, manv et choc ne présentent aucune valeur manquante.
+Cela signifie que le code "0" ne doit pas être automatiquement assimilé à une valeur manquante : les autres informations sur ces véhicules sont bien renseignées.
+
+Avant de décider du traitement de ces codes, vérifions pourquoi le code "-1" n'apparaît pas dans le résultat alors que le tableau initial en comptait un.
+
+```{r}
+vehicules |>
+  filter(trimws(catv) %in% c("0", "-1")) |>
+  count(catv)
+```
+parfait!
+
+*Décision de néttoyage*:
+
+- On conserve les 287 véhicules avec catv = "0" : ce sont des observations valides.
+- On ne supprime pas le véhicule avec catv = "-1" : on conservera cette valeur comme donnée non renseignée.
+Prochaine étape : vérifions si les autres variables du fichier vehicules contiennent des codes -1.
+
+```{r}
+vehicules |>
+  summarise(
+    senc = sum(senc == "-1", na.rm = TRUE),
+    obs = sum(obs == "-1", na.rm = TRUE),
+    obsm = sum(obsm == "-1", na.rm = TRUE),
+    choc = sum(choc == "-1", na.rm = TRUE),
+    manv = sum(manv == "-1", na.rm = TRUE),
+    motor = sum(motor == "-1", na.rm = TRUE),
+    occutc = sum(occutc == "-1", na.rm = TRUE)
+  )
+```
+
+*Bilan du contrôle du fichier vehicules* :
+- 92 678 véhicules conservés.
+- 287 véhicules avec catv = "0" : modalité indéterminable, conservée.
+- 1 véhicule avec catv = "-1" : information non renseignée, conservée.
+- Aucun -1 dans les sept autres variables contrôlées.
+
+
+La documentation officielle de l'ONISR rappelle que les codes doivent être interprétés selon chaque variable, et non supprimés systématiquement. 
+onisr.securite-routiere.gouv.fr
+
+
+*Controle des valeurs manquantes*
+```{r}
+colSums(is.na(vehicules))
+```
+
+sur les 92 678 véhicules, la variable occutc contient 91 729 valeurs manquantes, soit environ 99 % des observations.
+
+Cela ne signifie pas que le fichier véhicules est mauvais. Certaines variables du BAAC ne concernent que des catégories particulières de véhicules ou certaines situations. Il ne faut donc pas supprimer ces lignes.
+
+La variable occutc correspond au nombre d'occupants dans un transport en commun. Elle n'est donc pertinente que pour les véhicules concernés. 
+onisr.securite-routiere.gouv.fr+1
+
+
+Sur les données :
+- 91 729 valeurs manquantes (environ 98,98 %).
+- 949 valeurs renseignées (environ 1,02 %).
+On va vérifier les catégories de véhicules pour lesquelles cette variable est renseignée.
+
+
+```{r}
+vehicules |>
+  filter(!is.na(occutc)) |>
+  count(catv, sort = TRUE)
+```
+
+On constate que les 949 valeurs renseignées de occutc concernent exclusivement deux catégories :
+37 catégories de véhicules qui comportent 708
+38 catégories de végicules qui comportent 241
+
+```{r}
+vehicules |>
+  filter(catv %in% c("37", "38")) |>
+  select(catv, occutc) |>
+  group_by(catv) |>
+  summarise(
+    nb = n(),
+    minimum = min(occutc, na.rm = TRUE),
+    maximum = max(occutc, na.rm = TRUE),
+    moyenne = mean(occutc, na.rm = TRUE)
+  )
+```
+ 
+
+On a le tableau statistique suivant:
+
+Catégorie	  Signification 	Nombre	  Moyenne d'occupants
+37	        Autobus	        708	      1,80
+38	       Autocar	        241	      2,85
+
+
+Total		949	
+
+Les codes 37 et 38 correspondent respectivement aux autobus et autocars. occutc représente le nombre total d'occupants du transport en commun, conducteur compris. 
+
+
+
+*Attention* : la moyenne calculée est celle des véhicules accidentés recensés, pas celle de l'ensemble des autobus et autocars en circulation.
+Décision pour le projet:
+On conserve occutc dans le fichier original vehicules. On ne l'intègre pas encore à la table accidents, car cette information est spécifique aux transports en commun.
+
+
+
+
+
+*Controle des valeurs de motor*
+```{r}
+table(vehicules$motor, useNA = "ifany")
+```
+*les resultats sous forme de tableau*
+```{r}
+
+library(knitr)
+
+svt <- data.frame(
+  Code = c(-1, 0, 1, 2, 3, 4, 5, 6),
+  Signification = c("Non renseigné", "Inconnu", "Hydrocarbures",
+                    "Hybride électrique", "Électrique", "Hydrogène",
+                    "Humaine", "Autre"),
+  Effectif = c(192, 3888, 72964, 4046, 6000, 48, 5285, 255)
+)
+
+kable(svt, format.args = list(big.mark = " "),
+      caption = "Résultat SVT : source d'énergie du véhicule")
+
+```
+
+voir la nomenclature BAAC
+
+*Interprétation* :
+- Le code -1 représente une information non renseignée.
+- Le code 0 signifie que la motorisation est inconnue : ce n'est pas une valeur manquante.
+- Les codes 1 à 6 sont des catégories exploitables.
+On conserve donc toutes les lignes et les codes d'origine.
+
+*Vérification des valeurs manquantes de la variable snc*
+```{r}
+table(vehicules$senc, useNA = "ifany")
+```
+*Resutats sous forme de tableau*
+```{r}
+
+pk <- data.frame(
+  Code = c("-1", "0", "1", "2", "3", ""),
+  Signification = c("Non renseigné", "Inconnu",
+                    "Sens des PK/PR ou adresses croissants",
+                    "Sens des PK/PR ou adresses décroissants",
+                    "Absence de repère", "Total"),
+  Effectif = c(68, 4812, 41285, 31450, 15063, 92678)
+)
+
+kable(pk, format.args = list(big.mark = " "),
+      caption = "Résultat : repérage du sens de circulation")
+```
+
+ *Décision* :
+- On conserve les codes 0, 1, 2 et 3.
+- On conserve les 68 valeurs -1 dans les données brutes, mais les considérer comme non renseignées lors des analyses concernées.
+- On supprimer aucune ligne.
+
+*Examinons la variable obs(obstacle fixe heurté par le véhicule)*
+```{r}
+table(vehicules$obs, useNA = "ifany")
+```
+
+
+*Resultats sous forme de tableau*
+```{r}
+
+obstacle <- data.frame(
+  Code = c(-1, 0:17),
+  Signification = c("Non renseigné", "Sans objet", "Véhicule en stationnement",
+                    "Arbre", "Glissière métallique", "Glissière béton",
+                    "Autre glissière", "Bâtiment, mur, pile de pont",
+                    "Support de signalisation", "Poteau", "Mobilier urbain",
+                    "Parapet", "Îlot, refuge, borne haute", "Bordure de trottoir",
+                    "Fossé, talus, paroi rocheuse",
+                    "Autre obstacle fixe sur chaussée",
+                    "Autre obstacle fixe sur trottoir ou accotement",
+                    "Sortie de chaussée sans obstacle",
+                    "Buse, tête d'aqueduc"),
+  Effectif = c(27, 78800, 2259, 1508, 1202, 1371, 190, 1049, 264, 1124,
+               492, 91, 155, 818, 1652, 652, 515, 416, 93)
+)
+
+kable(obstacle, format.args = list(big.mark = " "),
+      caption = "Résultat : obstacle fixe heurté")
+```
+
+
+ *Décision*:
+- On conserve les 78 800 valeurs 0 : elles signifient qu'aucun obstacle fixe n'a été heurté.
+- On conserve les 27 valeurs -1 dans les données brutes, en les considérant comme non renseignées.
+- On ne supprime aucune observation.
+
+*Examen de la variable obsm(obstacle mobile heurté)*
+```{r}
+table(vehicules$obsm, useNA = "ifany")
+```
+
+*Resultat sous forme de tableau* 
+```{r}
+library(knitr)
+
+obstacle_mobile <- data.frame(
+  Code = c("-1", "0", "1", "2", "4", "5", "6", "9", ""),
+  Signification = c("Non renseigné", "Aucun", "Piéton", "Véhicule",
+                    "Véhicule sur rail", "Animal domestique", "Animal sauvage",
+                    "Autre", "Total"),
+  Effectif = c(30, 17572, 8354, 64549, 90, 96, 138, 1849, 92678)
+)
+
+kable(obstacle_mobile, format.args = list(big.mark = " "),
+      caption = "Résultat : obstacle mobile heurté")
+```
+
+
+*Décision*:
+- 0 : aucun obstacle mobile, valeur valide.
+- -1 : information non renseignée.
+- Les autres codes : catégories exploitables.
+- Aucune ligne ne sera supprimée.
+
+*Examen de la variable choc*
+```{r}
+table(vehicules$choc, useNA = "ifany")
+```
+
+*Resultat sous forme de tableau*
+```{r}
+library(knitr)
+
+choc <- data.frame(
+  Code = c("-1", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ""),
+  Signification = c("Non renseigné", "Aucun / inconnu", "Avant", "Avant droit",
+                    "Avant gauche", "Arrière", "Arrière droit", "Arrière gauche",
+                    "Côté droit", "Côté gauche", "Chocs multiples (tonneaux)",
+                    "Total"),
+  Effectif = c(44, 6083, 33858, 11009, 13928, 8844, 2558, 3202, 5521, 6307,
+               1324, 92678)
+)
+
+kable(choc, format.args = list(big.mark = " "),
+      caption = "Résultat : point de choc initial")
+```
+
+*Première observation statistique*
+Le point de choc le plus fréquent est l'avant du véhicule :
+- Avant : 33 858 véhicules.
+- Avant droit : 11 009.
+- Avant gauche : 13 928.
+Cela montre une forte concentration des premiers impacts sur la partie avant des véhicules.
+
+
+*Attention* : il s'agit de véhicules impliqués dans des accidents corporels.
+
+*Examen de la variable manv*
+```{r}
+table(vehicules$manv, useNA = "ifany")
+```
+
+*Resultat sous forme de tableau*
+```{r}
+manoeuvre <- data.frame(
+  Code = c("-1", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+           "11–12", "13–14", "15–16", "17–18", "19", "20", "21", "22",
+           "23", "24", "25", "26"),
+  Signification = c("Non renseigné", "Inconnue", "Sans changement de direction",
+                    "Même sens, même file", "Entre deux files",
+                    "En marche arrière", "À contresens",
+                    "En franchissant le terre-plein central",
+                    "Dans un couloir de bus, même sens",
+                    "Dans un couloir de bus, sens inverse", "En insertion",
+                    "Demi-tour sur chaussée",
+                    "Changement de file à gauche / à droite",
+                    "Déport à gauche / à droite",
+                    "Tourne à gauche / à droite",
+                    "Dépasse à gauche / à droite",
+                    "Traverse la chaussée", "Manœuvre de stationnement",
+                    "Manœuvre d'évitement", "Ouverture de portière",
+                    "Arrêté hors stationnement",
+                    "En stationnement avec occupants",
+                    "Circule sur trottoir", "Autre manœuvre")
+)
+
+kable(manoeuvre, caption = "Résultat : manœuvre principale avant l'accident")
+```
+Nous avons maintenant la répartition de manv, qui décrit la manœuvre principale effectuée par le véhicule juste avant l'accident.
+
+
+*Quelques observations sur les données*
+```{r}
+manoeuvre <- data.frame(
+  Code = c("-1", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+           "11–12", "13–14", "15–16", "17–18", "19", "20", "21", "22",
+           "23", "24", "25", "26"),
+  Signification = c("Non renseigné", "Inconnue", "Sans changement de direction",
+                    "Même sens, même file", "Entre deux files",
+                    "En marche arrière", "À contresens",
+                    "En franchissant le terre-plein central",
+                    "Dans un couloir de bus, même sens",
+                    "Dans un couloir de bus, sens inverse", "En insertion",
+                    "Demi-tour sur chaussée",
+                    "Changement de file à gauche / à droite",
+                    "Déport à gauche / à droite",
+                    "Tourne à gauche / à droite",
+                    "Dépasse à gauche / à droite",
+                    "Traverse la chaussée", "Manœuvre de stationnement",
+                    "Manœuvre d'évitement", "Ouverture de portière",
+                    "Arrêté hors stationnement",
+                    "En stationnement avec occupants",
+                    "Circule sur trottoir", "Autre manœuvre")
+)
+
+kable(manoeuvre, caption = "Résultat : manœuvre principale avant l'accident")
+```
+
+
+La manœuvre la plus fréquente est donc le code 1, avec 38 129 véhicules.
+
+*Attention* : ce sont des effectifs de véhicules impliqués dans des accidents corporels, pas des taux de risque par manœuvre.
+3. Décision de nettoyage
+On conserve toutes les modalités :
+- -1 : information non renseignée ;
+- 0 : manœuvre inconnue ;
+- 1 à 26 : modalités codifiées.
+Aucune ligne ne sera supprimée.
+
+
+*Dernier controle du fichier véhicule*
+```{r}
+dim(vehicules)
+n_distinct(vehicules$Num_Acc)
+sum(duplicated(vehicules))
+colSums(is.na(vehicules))
+```
+
+*Bilan de validation* 
+```{r}
+library(knitr)
+
+bilan <- data.frame(
+  Contrôle = c("Nombre de lignes", "Nombre de colonnes",
+               "Accidents distincts (Num_Acc)", "Doublons de lignes complètes",
+               "Valeurs manquantes dans occutc",
+               "Valeurs manquantes dans les autres colonnes"),
+  Résultat = c(92678, 11, 54402, 0, 91729, 0),
+  Interprétation = c("Conforme", "Conforme", "Conforme",
+                     "Aucun doublon exact",
+                     "À conserver comme valeurs manquantes", "")
+)
+
+kable(bilan, format.args = list(big.mark = " "),
+      caption = "Bilan de validation : fichier validé sous réserve du contrôle des identifiants")
+```
+
+*Attention à une distinction importante* : sum(duplicated(vehicules)) vérifie les lignes entièrement identiques. Pour compter les répétitions de numéros d'accidents, il faut utiliser sum(duplicated(vehicules$Num_Acc)). Ces répétitions sont normales puisqu'un accident peut impliquer plusieurs véhicules.
+
+*Dernier vérification avant de cloturer ce fichier*:
+
+*L'unicité de chaque identifiant de véhicule*
+```{r}
+n_distinct(vehicules$id_vehicule)
+sum(duplicated(vehicules$id_vehicule))
+```
+
+*Les résultats confirment que* :
+- 92 678 véhicules sont présents.
+- 92 678 identifiants distincts.
+- 0 identifiant de véhicule dupliqué.
+Chaque véhicule possède donc un identifiant unique. Les répétitions de Num_Acc sont normales puisqu'un accident peut impliquer plusieurs véhicules.
+
+*Bilan du travail*
+Nous avons maintenant contrôlé les quatre fichiers BAAC :
+1. carac : caractéristiques des accidents.
+2. lieux : caractéristiques des lieux.
+3. usagers : personnes impliquées.
+4. vehicules : véhicules impliqués.
+Nous avons également construit accidents, notre table principale de 54 402 accidents et 29 colonnes, avec les indicateurs de gravité, les classes d'âge et le nombre de véhicules.
+
+
+*Sauvegarde du travail*
+```{r}
+saveRDS(vehicules, "data/vehicules_2024.rds")
+saveRDS(accidents, "data/accidents_clean.rds")
+```
+
+```{r}
+file.exists("data/vehicules_2024.rds")
+file.exists("data/accidents_clean.rds")
+```
+
+*Préparation de la base d'analyse des véhicules*
+```{r}
+dim(vehicules_acc)
+head(vehicules_acc)
+n_distinct(vehicules_acc$Num_Acc)
+```
+
+
+
+```{r}
+dim(vehicules_acc)
+head(vehicules_acc)
+
+n_distinct(vehicules_acc$Num_Acc)
+```
+Resultats conforme!
+
+chaque accidents posséde sont nombre de véhicules associé.
+
+*Vérification de la répartition des véhicules par accident*
+
+*Obejectif*:examiner combien d'accidents impliquent 1,2,3, véhicules ou davantage
+```{r}
+table(accidents$nb_vehicules)
+```
+
+
+*histogramme de la répartition*
+```{r}
+library(ggplot2)
+library(scales)
+
+veh <- data.frame(
+  Nb_vehicules = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 11),
+  Nb_accidents = c(20780, 29968, 2909, 574, 124, 30, 6, 6, 3, 2)
+)
+
+ggplot(veh, aes(x = factor(Nb_vehicules), y = Nb_accidents)) +
+  geom_col(fill = "#2C7FB8", width = 0.8) +
+  geom_text(aes(label = format(Nb_accidents, big.mark = " ")),
+            vjust = -0.4, size = 3.5) +
+  scale_y_continuous(labels = label_number(big.mark = " "),
+                     expand = expansion(mult = c(0, 0.1))) +
+  labs(title = "Répartition du nombre de véhicules par accident",
+       x = "Nombre de véhicules", y = "Nombre d'accidents") +
+  theme_minimal(base_size = 13)
+```
+
+
+
+
+
+
+*Interprétation statistique*
+- 29 968 accidents impliquent deux véhicules, soit environ 55,1 %.
+- 20 780 accidents impliquent un seul véhicule, soit environ 38,2 %.
+- Les accidents impliquant trois véhicules ou plus représentent environ 6,7 %.
+La majorité des accidents corporels recensés impliquent donc un ou deux véhicules.
+
+*Attention* : cette répartition décrit les accidents corporels enregistrés, pas le risque d'accident selon le nombre de véhicules.
+
+
+```{r}
+summary(accidents$nb_vehicules)
+```
+La moyenne est de 1,704 véhicule par accident.
+La médiane est de 2 véhicules.
+La moitié des accidents implique au maximum deux véhicules.
+Quelques accidents impliquent un nombre beaucoup plus élevé de véhicules, jusqu'à 11.
+
+```{r}
+names(accidents)
+```
+```{r}
+dim(accidents)
+```
+*Pour mieux voir les 29 variables*
+```{r}
+library(knitr)
+
+groupes <- data.frame(
+  Groupe = c("Identification", "Temps", "Caractéristiques de l'accident",
+             "Gravité et usagers", "Véhicules"),
+  Variables = c("Num_Acc",
+                "jour, mois, an, hrmn, date, heure, minute, periode",
+                "lum, dep, com, agg, int, atm, col, adr, lat, long",
+                "nb_usagers, grave, tue, les 6 variables de classes d'âge",
+                "nb_vehicules")
+)
+
+kable(groupes, caption = "Groupes de variables du jeu de données")
+```
+
+
+
+*Controle finale des valeurs manquantes*
+```{r}
+colSums(is.na(accidents))
+```
+*Bilan de la table accidents*
+- 54 402 accidents.
+- 29 variables.
+- 2 valeur manquante.
+- 0 doublon sur Num_Acc.
+- Les classes d'âge sont intégrées.
+- Le nombre de véhicules est intégré.
+- Les indicateurs de gravité sont intégrés.
+
+```{r}
+nrow(accidents)
+
+n_distinct(accidents$Num_Acc)
+
+sum(duplicated(accidents$Num_Acc))
+```
+
+ *Examiner les modalités présentes*
+```{r}
+table(accidents$lum, useNA = "ifany")
+```
+pas de valeur manquante ou de code -1
+
+*le rsultat sous forme de tableau*
+```{r}
+library(knitr)
+
+lum <- data.frame(
+  Code = c("1", "2", "3", "4", "5"),
+  Signification = c("Plein jour", "Crépuscule ou aube",
+                    "Nuit sans éclairage public",
+                    "Nuit avec éclairage public non allumé",
+                    "Nuit avec éclairage public allumé"),
+  Accidents = c(35580, 3599, 6101, 623, 8499)
+)
+
+kable(lum, format.args = list(big.mark = " "),
+      caption = "Résultat : conditions d'éclairage (lum)")
+```
+
+*Création des libellés*
+```{r}
+accidents <- accidents |>
+  mutate(
+    lum_libelle = case_when(
+      lum == 1 ~ "Plein jour",
+      lum == 2 ~ "Crépuscule ou aube",
+      lum == 3 ~ "Nuit sans éclairage public",
+      lum == 4 ~ "Nuit avec éclairage public non allumé",
+      lum == 5 ~ "Nuit avec éclairage public allumé",
+      TRUE ~ "Code non documenté"
+    )
+  )
+```
+
+
+
+```{r}
+table(accidents$lum, accidents$lum_libelle)
+```
+
+*le resultat sous forme de tableau plus claire*
+```{r}
+library(knitr)
+
+croise <- data.frame(
+  Code = c("1", "2", "3", "4", "5"),
+  `Crépuscule ou aube` = c(0, 3599, 0, 0, 0),
+  `Nuit avec éclairage public allumé` = c(0, 0, 0, 0, 8499),
+  `Nuit avec éclairage public non allumé` = c(0, 0, 0, 623, 0),
+  `Nuit sans éclairage public` = c(0, 0, 6101, 0, 0),
+  `Plein jour` = c(35580, 0, 0, 0, 0),
+  check.names = FALSE
+)
+
+kable(croise, format.args = list(big.mark = " "),
+      caption = "Croisement code lum × libellé")
+```
+lum :variable numerique d'origine.
+lum_libelle : variable descriptive utilisable dans les analyses et graphique.
+
+*Racordement de la variable agg(agglomeration) qui decrit la situation de l'accident par rapport à l'agglome*
+```{r}
+table(accidents$agg, useNA = "ifany")
+```
+*le resultat sous forme de tableau*
+```{r}
+library(knitr)
+
+agg <- data.frame(
+  Code = c("1", "2"),
+  Signification = c("En agglomération", "Hors agglomération"),
+  Accidents = c(20392, 34010)
+)
+
+kable(agg, format.args = list(big.mark = " "),
+      caption = "Résultat : localisation (agg)")
+```
+
+
+
+*Création agg_libelle*
+```{r}
+accidents <- accidents |>
+  mutate(
+    agg_libelle = case_when(
+      agg == 2 ~ "En agglomération",
+      agg == 1 ~ "Hors agglomération",
+      TRUE ~ "Code non documenté"
+    )
+  )
+```
+
+
+```{r}
+table(accidents$agg, accidents$agg_libelle)
+```
+
+*Examen de la variable int*
+```{r}
+table(accidents$int, useNA = "ifany")
+```
+la variable int contient 9 modalité pour un total de 54402 accidents.
+Pas de valeur manquante.
+
+*le resultat sous forme de tableau*
+```{r}
+library(knitr)
+
+inter <- data.frame(
+  Code = as.character(1:9),
+  Signification = c("Hors intersection", "Intersection en X (4 branches)",
+                    "Intersection en T (3 branches)",
+                    "Intersection en Y (3 branches)",
+                    "Intersection à plus de 4 branches", "Giratoire", "Place",
+                    "Passage à niveau", "Autre intersection"),
+  Accidents = c(34589, 6289, 6451, 1048, 263, 2717, 453, 138, 2454)
+)
+
+kable(inter, format.args = list(big.mark = " "),
+      caption = "Résultat : type d'intersection (int)")
+```
+
+
+
+*Création de int_libelle*
+```{r}
+accidents <- accidents |>
+  mutate(
+    int_libelle = case_when(
+      int == 1 ~ "Hors intersection",
+      int == 2 ~ "Intersection en X",
+      int == 3 ~ "Intersection en T",
+      int == 4 ~ "Intersection en Y",
+      int == 5 ~ "Intersection à plus de 4 branches",
+      int == 6 ~ "Giratoire",
+      int == 7 ~ "Place",
+      int == 8 ~ "Passage à niveau",
+      int == 9 ~ "Autre intersection",
+      TRUE ~ "Code non documenté"
+    )
+  )
+```
+
+
+```{r}
+table(accidents$int, accidents$int_libelle)
+```
+*le resultat sous forme de tableau*
+```{r}
+library(knitr)
+
+croise_int <- data.frame(
+  Code = as.character(1:9),
+  `Autre intersection` = c(0, 0, 0, 0, 0, 0, 0, 0, 2454),
+  `Giratoire` = c(0, 0, 0, 0, 0, 2717, 0, 0, 0),
+  `Hors intersection` = c(34589, 0, 0, 0, 0, 0, 0, 0, 0),
+  `Intersection à plus de 4 branches` = c(0, 0, 0, 0, 263, 0, 0, 0, 0),
+  `Intersection en T` = c(0, 0, 6451, 0, 0, 0, 0, 0, 0),
+  `Intersection en X` = c(0, 6289, 0, 0, 0, 0, 0, 0, 0),
+  `Intersection en Y` = c(0, 0, 0, 1048, 0, 0, 0, 0, 0),
+  `Passage à niveau` = c(0, 0, 0, 0, 0, 0, 0, 138, 0),
+  `Place` = c(0, 0, 0, 0, 0, 0, 453, 0, 0),
+  check.names = FALSE
+)
+
+kable(croise_int, format.args = list(big.mark = " "),
+      caption = "Croisement code int × libellé")
+```
+
+Nous avons maintenant trois variables recodées :
+- lum_libelle : conditions d'éclairage.
+- agg_libelle : situation en ou hors agglomération.
+- int_libelle : type d'intersection.
+
+
+*Examen de la variable atm*:
+Elle décrit les conditions atmospherique au moment de l'accident
+```{r}
+table(accidents$atm, useNA = "ifany")
+```
+*Le resultat sous forme de tableau*
+```{r}
+library(knitr)
+
+atm <- data.frame(
+  Code = as.character(1:9),
+  `Conditions atmosphériques` = c("Normale", "Pluie légère", "Pluie forte",
+                                  "Neige – grêle", "Brouillard – fumée",
+                                  "Vent fort – tempête", "Temps éblouissant",
+                                  "Temps couvert", "Autre"),
+  Accidents = c(41802, 6779, 1449, 233, 529, 169, 817, 2374, 250),
+  check.names = FALSE
+)
+
+kable(atm, format.args = list(big.mark = " "),
+      caption = "Résultat : conditions atmosphériques (atm)")
+```
+
+
+
+```{r}
+accidents <- accidents |>
+  mutate(
+    atm_libelle = case_when(
+      atm == 1 ~ "Normale",
+      atm == 2 ~ "Pluie légère",
+      atm == 3 ~ "Pluie forte",
+      atm == 4 ~ "Neige - grêle",
+      atm == 5 ~ "Brouillard - fumée",
+      atm == 6 ~ "Vent fort - tempête",
+      atm == 7 ~ "Temps éblouissant",
+      atm == 8 ~ "Temps couvert",
+      atm == 9 ~ "Autre",
+      TRUE ~ "Code non documenté"
+    )
+  )
+```
+
+
+```{r}
+table(accidents$atm, accidents$atm_libelle)
+```
+*Le resultat sous forme de tableau*
+```{r}
+library(knitr)
+
+croise_atm <- data.frame(
+  Code = as.character(1:9),
+  `Autre` = c(0, 0, 0, 0, 0, 0, 0, 0, 250),
+  `Brouillard - fumée` = c(0, 0, 0, 0, 529, 0, 0, 0, 0),
+  `Neige - grêle` = c(0, 0, 0, 233, 0, 0, 0, 0, 0),
+  `Normale` = c(41802, 0, 0, 0, 0, 0, 0, 0, 0),
+  `Pluie forte` = c(0, 0, 1449, 0, 0, 0, 0, 0, 0),
+  `Pluie légère` = c(0, 6779, 0, 0, 0, 0, 0, 0, 0),
+  `Temps couvert` = c(0, 0, 0, 0, 0, 0, 0, 2374, 0),
+  `Temps éblouissant` = c(0, 0, 0, 0, 0, 0, 817, 0, 0),
+  `Vent fort - tempête` = c(0, 0, 0, 0, 0, 169, 0, 0, 0),
+  check.names = FALSE
+)
+
+kable(croise_atm, format.args = list(big.mark = " "),
+      caption = "Croisement code atm × libellé")
+```
+
+Maintenant on a quatre variables recodées :
+1. lum_libelle : éclairage.
+2. agg_libelle : situation en ou hors agglomération.
+3. int_libelle : type d'intersection.
+4. atm_libelle : conditions atmosphériques.
+
+
+*Examen de la variable col*
+```{r}
+table(accidents$col, useNA = "ifany")
+```
+Le resultat sous forme de tableau
+```{r}
+library(knitr)
+
+col <- data.frame(
+  Code = c("-1", as.character(1:7)),
+  `Type de collision` = c("Non renseigné",
+                          "Deux véhicules – collision frontale",
+                          "Deux véhicules – collision par l'arrière",
+                          "Deux véhicules – collision par le côté",
+                          "Trois véhicules ou plus – collision en chaîne",
+                          "Trois véhicules ou plus – collisions multiples",
+                          "Autre collision", "Sans collision"),
+  Accidents = c(6, 6057, 7162, 16371, 1821, 1554, 15968, 5463),
+  check.names = FALSE
+)
+
+kable(col, format.args = list(big.mark = " "),
+      caption = "Résultat : type de collision (col)")
+```
+La variable col contient 7 modalités renseignées et 6 accidents avec le code -1, soit 54 402 accidents au total.
+
+
+
+*Création de col_libelle*
+```{r}
+accidents <- accidents |>
+  mutate(
+    col = trimws(col),
+    col_libelle = case_when(
+      col == "-1" ~ "Non renseigné",
+      col == "1" ~ "Collision frontale",
+      col == "2" ~ "Collision par l'arrière",
+      col == "3" ~ "Collision par le côté",
+      col == "4" ~ "Collision en chaîne",
+      col == "5" ~ "Collisions multiples",
+      col == "6" ~ "Autre collision",
+      col == "7" ~ "Sans collision",
+      TRUE ~ "Code non documenté"
+    )
+  )
+```
+
+```{r}
+table(accidents$col, accidents$col_libelle)
+```
+Maintenant on a quatre variables recodées :
+1. lum_libelle 
+2. agg_libelle 
+3. int_libelle 
+4. atm_libelle 
+5. col_libelle
+
+
+ *Examen de la variable dep*
+```{r}
+table(accidents$dep, useNA = "ifany")
+```
+
+
+
+Nous avons bien 54 402 accidents répartis dans plusieurs départements français, y compris les territoires ultramarins.
+
+Quelques observations importantes :
+- Les départements métropolitains sont codés de 01 à 95.
+- 2A et 2B correspondent à la Corse-du-Sud et à la Haute-Corse.
+- 971 à 976 correspondent notamment aux départements et collectivités ultramarins.
+- Les codes 986, 987 et 988 correspondent à d'autres territoires ultramarins.
+Décision :on conserve dep sans recodage
+Contrairement aux variables précédentes, dep est un code géographique, pas une variable dont les valeurs doivent être transformées en libellés pour être analysées.
+
+On conserve absolument les zéros initiaux (01, 02...) et les codes alphanumériques (2A, 2B). Cette variable sera utile pour les analyses géographiques et la carte interactive.
+
+
+
+ *Examen de la variable com*
+comme il existe plusieurs communes nous n'allons pas afficher toutes les modalités avec table()
+```{r}
+class(accidents$com)
+head(accidents$com, 10)
+length(unique(accidents$com))
+```
+- com est de type character : c'est le bon format.
+- Les codes communaux sont conservés sous forme de texte, avec leurs zéros initiaux.
+- On a 11 285 codes de communes distincts dans les 54 402 accidents.
+Décision :On conserve com sans modification
+On garde cette variable telle quelle. Elle pourra servir à identifier les communes et à réaliser des analyses géographiques plus précises.
+
+*Examen des coordonnées géographiques*:log et lat
+```{r}
+class(accidents$lat)
+class(accidents$long)
+
+summary(as.numeric(accidents$lat))
+summary(as.numeric(accidents$long))
+```
+```{r}
+head(accidents$lat, 15)
+head(accidents$long, 15)
+```
+
+```{r}
+unique(accidents$lat)[1:10]
+unique(accidents$long)[1:10]
+```
+
+
+on constate un probleme sur les deux variables:ces coordonnées utilisent des virgules comme séparateur au lieu de point.
+Pour cela on va nettoyer et convertis les coordonnées.
+on va conserver les variables originales et créer les deux variables numériques:latitude et longitude 
+```{r}
+accidents <- accidents |>
+  mutate(
+    latitude = as.numeric(gsub(",", ".", trimws(lat))),
+    longitude = as.numeric(gsub(",", ".", trimws(long)))
+  )
+```
+
+
+```{r}
+summary(accidents$latitude)
+summary(accidents$longitude)
+```
+
+```{r}
+sum(is.na(accidents$latitude))
+sum(is.na(accidents$longitude))
+```
+latitude et longitude sont maintenant numériques.
+Aucune valeur manquante n'a été créée : 0 NA pour les deux variables.
+Les coordonnées sont comprises entre :
+- Latitude : -22,43 et 51,08.
+- Longitude : -178,094 et 167,863.
+
+
+*Vérification des coordonnées extrémes*
+```{r}
+accidents |>
+  filter(
+    latitude < 40 | latitude > 52 |
+    longitude < -10 | longitude > 10
+  ) |>
+  select(Num_Acc, dep, lat, long, latitude, longitude) |>
+  head(15)
+```
+
+```{r}
+sum(
+  accidents$latitude < 40 | accidents$latitude > 52 |
+  accidents$longitude < -10 | accidents$longitude > 10
+)
+```
+Les premières observations sont géographiquement cohérentes :
+- 972 : Martinique.
+- 974 : La Réunion.
+- 987 : Polynésie française.
+- 988 : Nouvelle-Calédonie.
+Les coordonnées négatives sont donc normales. Nous avons 3 347 accidents qui se situent hors de la zone géographique métropolitaine définie par notre filtre.
+
+
+
+*Contole des coordonnées abérantes*:
+on va vérifier que les latitudes et longitudes restent dans les limites géographiques possibles de globe.
+```{r}
+sum(
+  accidents$latitude < -90 |
+  accidents$latitude > 90 |
+  accidents$longitude < -180 |
+  accidents$longitude > 180
+)
+```
+
+
+```{r}
+range(accidents$latitude)
+range(accidents$longitude)
+```
+- Aucune coordonnée hors des limites mondiales : 0 anomalie.
+- Latitude : de -22,43324 à 51,07874.
+- Longitude : de -178,0944 à 167,8632.
+- Aucune valeur manquante après conversion.
+On conserve donc :
+- lat et long : coordonnées originales.
+- latitude et longitude : coordonnées numériques pour la cartographie.
+
+
+Bilan de du nettoyage et recodage
+On a maintenant traité :
+
+Variables	            États
+lum_libelle	          Validée
+agg_libelle	          Validée et corrigée
+int_libelle    	      Validée
+atm_libelle	          Validée
+col_libelle	         Validée
+dep	Conservée
+com	Conservée
+
+latitude et longitude	Validées
+
+*Examen des variables* :jour et mois
+```{r}
+table(accidents$mois, useNA = "ifany")
+```
+Resultats sous forme de tableau
+```{r}
+library(knitr)
+
+mois <- data.frame(
+  Mois = c("Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet",
+           "Août", "Septembre", "Octobre", "Novembre", "Décembre"),
+  `Nombre d'accidents` = c(4069, 3792, 4370, 4586, 4517, 5135, 5209, 4450,
+                           4620, 4803, 4477, 4374),
+  check.names = FALSE
+)
+
+kable(mois, format.args = list(big.mark = " "),
+      caption = "Répartition des accidents par mois")
+```
+
+
+Première observation : juillet est le mois qui compte le plus d'accidents (5 209), tandis que février en compte le moins (3 792).
+il s'agit de nombres bruts d'accidents, pas d'une mesure du risque individuel.
+
+
+
+```{r}
+summary(accidents$jour)
+```
+Vérification de jour
+- Minimum : 1
+- Maximum : 31
+- Moyenne : 15,67
+- Médiane : 16
+Les valeurs sont cohérentes pour un jour du mois.
+
+
+*Vérification de la variable date*
+```{r}
+summary(accidents$date)
+```
+
+```{r}
+sum(is.na(accidents$date))
+```
+ 
+ 
+ *Sauregard dans le fichier rds de la base mise à jour*
+```{r}
+saveRDS(accidents, "data/accidents_clean.rds")
+```
+
+```{r}
+dim(accidents)
+```
+```{r}
+names(accidents)
+```
+```{r}
+file.exists("data/accidents_clean.rds")
+```
+
+### 3. Nettoyage et préparation des données
+
+Avant de réaliser les analyses statistiques, une phase de nettoyage et de préparation des données a été nécessaire. Cette étape vise à vérifier la qualité des fichiers, à contrôler les identifiants, à examiner les valeurs manquantes et à construire une base d'analyse cohérente.
+
+L'objectif est de disposer d'une table principale fiable, dans laquelle chaque ligne représente un accident corporel distinct.
+
+### 3.1. Contrôle de la structure des fichiers
+
+Les quatre fichiers BAAC ont fait l'objet de contrôles préliminaires portant notamment sur :
+
+- le nombre de lignes et de colonnes ;
+- le type des variables ;
+- le nombre d'identifiants d'accidents distincts ;
+- la présence de doublons ;
+- les valeurs manquantes.
+
+Les fichiers présentent des granularités différentes. Le fichier `carac` décrit les accidents, tandis que les fichiers `lieux`, `usagers` et `vehicules` peuvent comporter plusieurs observations pour un même accident.
+
+Cette distinction est importante pour éviter de multiplier artificiellement le nombre d'accidents lors des jointures.
+
+### 3.2. Vérification des identifiants et des doublons
+
+La variable `Num_Acc` constitue l'identifiant permettant de relier les différentes tables.
+
+Les contrôles réalisés montrent que le fichier `carac` contient 54 402 identifiants d'accidents distincts. Les répétitions de `Num_Acc` dans les fichiers `lieux`, `usagers` et `vehicules` correspondent à leur structure : un accident peut concerner plusieurs usagers ou plusieurs véhicules.
+
+Ces répétitions ne doivent donc pas être considérées automatiquement comme des doublons à supprimer.
+
+### 3.3. Construction des indicateurs de gravité
+
+Afin de caractériser la gravité des accidents, les informations du fichier `usagers` ont été agrégées au niveau de l'accident.
+
+Deux indicateurs ont été construits :
+
+- `grave` : indique si au moins un usager présente une gravité codée 2 ou 3 ;
+- `tue` : indique si au moins un usager présente une gravité codée 2.
+
+Le nombre d'usagers impliqués dans chaque accident a également été calculé.
+
+Cette agrégation permet de ramener les informations individuelles des usagers à une observation par accident.
+
+### 3.4. Construction de la table principale des accidents
+
+La table principale a été construite à partir du fichier `carac`, auquel ont été ajoutés les indicateurs agrégés issus du fichier `usagers`.
+
+Le choix de ne pas joindre directement toutes les lignes du fichier `lieux` permet de préserver l'unicité de chaque accident dans la table principale.
+
+La base obtenue contient initialement 54 402 accidents distincts. Elle a ensuite été enrichie avec des variables complémentaires, notamment les classes d'âge des usagers et le nombre de véhicules impliqués.
+
+### 3.5. Traitement des valeurs manquantes et des modalités particulières
+
+Une vérification des valeurs manquantes a été réalisée sur les différentes variables.
+
+Dans le fichier `carac`, deux valeurs manquantes ont notamment été relevées dans la variable `adr`. Les observations concernées ont été conservées afin de ne pas perdre d'informations sur les accidents correspondants.
+
+Les codes particuliers, notamment `-1` et `0`, ont été examinés selon la signification de chaque variable. Lorsqu'ils correspondent à une information non renseignée, inconnue ou sans objet, ils ont été conservés dans les données brutes plutôt que supprimés automatiquement.
+
+Cette démarche permet de limiter les pertes d'information et de préserver la structure initiale des données.
+
+### 3.6. Préparation des variables temporelles
+
+À partir des variables relatives à l'année, au mois, au jour et à l'heure, plusieurs variables temporelles ont été construites :
+
+- `date` : date de l'accident ;
+- `heure` : heure de l'accident ;
+- `minute` : minute de l'accident ;
+- `periode` : période de la journée.
+
+La variable `periode` distingue quatre catégories :
+
+- Nuit : de 00 h à 05 h 59 ;
+- Matin : de 06 h à 11 h 59 ;
+- Après-midi : de 12 h à 17 h 59 ;
+- Soir : de 18 h à 23 h 59.
+
+Ces transformations permettront d'étudier la répartition temporelle des accidents.
+
+### 3.7. Préparation des variables relatives aux usagers
+
+L'âge des usagers a été calculé à partir de l'année de naissance, selon la formule :
+
+`Âge = 2024 - année de naissance`
+
+Une variable de classe d'âge a ensuite été créée afin de faciliter les analyses comparatives entre groupes de population.
+
+Les catégories retenues sont :
+
+- Enfants : moins de 15 ans ;
+- Adolescents : de 15 à 17 ans ;
+- Jeunes adultes : de 18 à 24 ans ;
+- Adultes : de 25 à 44 ans ;
+- Adultes mûrs : de 45 à 64 ans ;
+- Seniors : 65 ans et plus.
+
+Les âges non renseignés ont été conservés comme valeurs manquantes et ne sont pas assimilés à une classe d'âge.
+
+### 3.8. Préparation des variables relatives aux véhicules
+
+Le fichier `vehicules` a également fait l'objet de contrôles spécifiques.
+
+Le nombre de véhicules impliqués dans chaque accident a été calculé à partir de la variable `Num_Acc`. Cette information a ensuite été intégrée à la table principale.
+
+Les variables décrivant notamment la catégorie du véhicule, sa motorisation, les obstacles heurtés, le point de choc et la manœuvre avant l'accident ont été examinées.
+
+Les modalités particulières ont été conservées lorsqu'elles correspondaient à des catégories prévues dans le codage ou à des informations non renseignées.
+
+Le contrôle des identifiants de véhicules a par ailleurs permis de vérifier l'unicité de la variable `id_vehicule` dans le fichier étudié.
+
+### 3.9. Préparation des variables géographiques
+
+Les variables `dep` et `com` ont été conservées sous forme de caractères afin de préserver les codes géographiques, notamment les zéros initiaux et les codes alphanumériques.
+
+Les coordonnées géographiques initialement stockées dans les variables `lat` et `long` ont été converties en variables numériques :
+
+- `latitude` ;
+- `longitude`.
+
+Des contrôles ont ensuite été réalisés afin de vérifier que les coordonnées respectent les limites géographiques possibles du globe.
+
+Ces variables numériques seront utilisées dans les analyses géographiques et la cartographie.
+
+### 3.10. Constitution de la base finale d'analyse
+
+À l'issue des opérations de préparation, la table `accidents` rassemble les principales informations nécessaires à l'étude :
+
+- les caractéristiques générales des accidents ;
+- les variables temporelles ;
+- les informations géographiques ;
+- les indicateurs de gravité ;
+- les informations relatives aux usagers ;
+- le nombre de véhicules impliqués.
+
+Cette base constitue le support principal des analyses exploratoires présentées dans la suite du rapport.
+
+Les tables sources sont néanmoins conservées séparément afin de permettre des analyses plus détaillées à leur niveau de granularité respectif.
+
+
+
+
+
+
+### 4. Analyse exploratoire des données (EDA)
+
+### 4.1. Objectifs et démarche de l'analyse exploratoire
+
+Après les étapes de collecte, de nettoyage et de préparation des données, cette phase consiste à explorer les accidents de la route enregistrés en France en 2024 à partir de la base BAAC.
+
+L'objectif est de mettre en évidence les principales tendances et les caractéristiques des accidents, en étudiant leur répartition dans le temps, leur localisation géographique, les conditions dans lesquelles ils surviennent, ainsi que les profils des usagers et les catégories de véhicules impliquées.
+
+L'analyse exploratoire s'organise autour de quatre axes complémentaires :
+
+1. **Analyse temporelle :** étude de la répartition des accidents selon le mois, le jour, l'heure et la période de la journée.
+2. **Analyse géographique et environnementale :** étude des départements et des communes concernés, ainsi que des conditions de circulation et de l'environnement des accidents.
+3. **Analyse des profils des usagers et de la gravité :** étude de l'âge, du sexe, de la catégorie des usagers et de la gravité des blessures.
+4. **Analyse des véhicules :** étude des catégories de véhicules impliqués, du nombre de véhicules par accident et de la gravité selon les catégories.
+
+Pour chaque axe, nous mobilisons des statistiques descriptives, des tableaux de synthèse et des représentations graphiques afin de faciliter l'interprétation des résultats.
+
+**Précaution d'interprétation :** les effectifs et pourcentages présentés décrivent les accidents et les usagers recensés dans la base. En l'absence de données d'exposition au trafic (nombre de trajets, kilomètres parcourus ou temps de circulation), ils ne permettent pas, à eux seuls, de mesurer le risque individuel d'accident ni d'établir des relations de causalité.
+
+
+
+# 4.2. Axe 1 — Analyse temporelle
+
+L'analyse temporelle vise à étudier la distribution des accidents de la route au cours de l'année 2024. Elle permet d'identifier les mois, les heures et les périodes de la journée durant lesquels les accidents sont les plus fréquemment enregistrés.
+
+Trois dimensions sont étudiées :
+- La répartition mensuelle des accidents ;
+- La répartition horaire des accidents ;
+- La répartition selon les périodes de la journée : nuit, matin, après-midi et soir.
+
+Ces analyses reposent sur les effectifs observés dans la base BAAC. Elles permettent de décrire les variations temporelles, sans pour autant mesurer le risque d'accident rapporté au volume de circulation.
+
+### 4.2.1.Répartition mensuelle des accidents 
+```{r}
+library(ggplot2)
+library(dplyr)
+
+accidents_mois <- accidents |>
+  count(mois, name = "nb_accidents") |>
+  arrange(mois)
+```
+
+
+```{r}
+accidents_mois
+```
+
+
+
+*Visualisation graphique*
+```{r}
+ggplot(accidents_mois, aes(x = mois, y = nb_accidents)) +
+  geom_col(fill = "steelblue") +
+  labs(
+    title = "Nombre d'accidents de la route par mois en France (2024)",
+    x = "Mois",
+    y = "Nombre d'accidents"
+  ) +
+  theme_minimal()
+```
+ Analyse :juillet est le mois qui compte le plus d'accidents (5 209), tandis que février en compte le moins (3 792).
+il s'agit de nombres bruts d'accidents, pas d'une mesure du risque individuel.
+
+
+### 4.2.1. Répartition horaire des accidents 
+```{r}
+accidents_heure <- accidents |>
+  count(heure, name = "nb_accidents") |>
+  arrange(heure)
+
+accidents_heure
+```
+
+
+ *Visualisation graphique des horaires*
+```{r}
+ggplot(accidents_heure, aes(x = heure, y = nb_accidents)) +
+  geom_col(fill = "steelblue") +
+  scale_x_continuous(breaks = 0:23) +
+  labs(
+    title = "Répartition des accidents par heure en France (2024)",
+    x = "Heure de la journée",
+    y = "Nombre d'accidents"
+  ) +
+  theme_minimal()
+```
+Observations:
+17h c'est l'heur ou il y'a le plus accidents avec 4607
+3h l'heur le moins accidents avec 602
+On observe également une augmentation importante entre 6 h et 8 h, puis un pic en fin d'après-midi, notamment à 17 h et 18 h.
+
+!ces chiffres représentent les volumes d'accidents enregistrés, pas le risque d'accident par trajet ou par heure de circulation.
+
+
+### 4.2.3. Répartition des accidents selon la période de la journée
+Visualisation des quatres periodes
+```{r}
+accidents_periode <- accidents |>
+  count(periode, name = "nb_accidents") |>
+  mutate(
+    periode = factor(
+      periode,
+      levels = c("Nuit", "Matin", "Après-midi", "Soir")
+    )
+  )
+
+ggplot(accidents_periode,
+       aes(x = periode, y = nb_accidents)) +
+  geom_col(fill = "steelblue") +
+  labs(
+    title = "Répartition des accidents par période de la journée (2024)",
+    x = "Période",
+    y = "Nombre d'accidents"
+  ) +
+  theme_minimal()
+```
+
+**Observation **: l'après-midi concentre le plus grand nombre d'accidents dans notre jeu de données, avec environ 36,9 %. La nuit présente le plus faible effectif.
+
+!ce sont des nombres d'accidents, pas des taux de risque rapportés au trafic.
+
+
+
+
+
+
+## 4.3 Axe 2-Analyse géographique et environnementale
+
+### 4.3.1.Répartition des accidents par departement
+
+On va compter le nombre d'accident dans chaque département,puis identifier les 10 départements qui en enrégistre le plus
+
+Objectifs :
+- Identifier les départements les plus touchés en nombre d'accidents.
+- Comparer leur poids dans l'ensemble des accidents.
+- Préparer une future carte interactive par département
+
+```{r}
+accidents_dep <- accidents |>
+  count(dep, name = "nb_accidents") |>
+  arrange(desc(nb_accidents))
+```
+
+**les 10 premier département**
+```{r}
+head(accidents_dep, 10)
+```
+ 
+ *Résultats sous forme de tableau*
+ 
+```{r}
+library(knitr)
+
+dep <- data.frame(
+  Rang = 1:10,
+  Département = c("75 – Paris", "93 – Seine-Saint-Denis", "92 – Hauts-de-Seine",
+                  "13 – Bouches-du-Rhône", "94 – Val-de-Marne", "69 – Rhône",
+                  "91 – Essonne", "33 – Gironde", "77 – Seine-et-Marne",
+                  "59 – Nord"),
+  `Nombre d'accidents` = c(4191, 2640, 2485, 2120, 1963, 1627, 1348, 1202,
+                           1068, 1023),
+  check.names = FALSE
+)
+
+kable(dep, format.args = list(big.mark = " "),
+      caption = "Classement des 10 premiers départements")
+```
+ 
+On vérifie le total
+```{r}
+sum(accidents_dep$nb_accidents)
+```
+C'est ok!
+
+*Visualisation des 10 premiers départements*
+```{r}
+accidents_dep_top10 <- accidents_dep |>
+  slice_max(
+    order_by = nb_accidents,
+    n = 10,
+    with_ties = FALSE
+  ) |>
+  mutate(
+    dep = factor(dep, levels = rev(dep))
+  )
+
+ggplot(accidents_dep_top10,
+       aes(x = dep, y = nb_accidents)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Top 10 des départements avec le plus d'accidents (2024)",
+    x = "Département",
+    y = "Nombre d'accidents"
+  ) +
+  theme_minimal()
+```
+observation : Paris arrive largement en tête avec 4 191 accidents. L'Île-de-France est particulièrement représentée dans ce classement.
+
+
+### 4.3.2. Répartition des accidents par commune:les 10 communes qui enrégistrent le plus des accidents
+```{r}
+accidents_com <- accidents |>
+  count(dep, com, name = "nb_accidents") |>
+  arrange(desc(nb_accidents))
+
+head(accidents_com, 10)
+```
+
+**observations** :
+- La commune 97302, en Guyane, arrive en tête avec 479 accidents.
+- Plusieurs arrondissements de Paris figurent dans le Top 10.
+- Les communes de Paris sont identifiées par des codes spécifiques, par exemple 75116 pour le 16ᵉ arrondissement.
+- Ces chiffres sont des volumes bruts : ils ne mesurent pas le risque individuel d'accident.
+
+*Visualisation*
+```{r}
+accidents_com_top10 <- accidents_com |>
+  slice_max(
+    order_by = nb_accidents,
+    n = 10,
+    with_ties = FALSE
+  ) |>
+  mutate(
+    commune = paste(dep, com, sep = " - "),
+    commune = factor(commune, levels = rev(commune))
+  )
+
+ggplot(accidents_com_top10,
+       aes(x = commune, y = nb_accidents)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Top 10 des communes avec le plus d'accidents (2024)",
+    x = "Département - Code commune",
+    y = "Nombre d'accidents"
+  ) +
+  theme_minimal()
+```
+
+
+### 4.3.3.Répartition des accidents selon la localisation
+ Mesurer la répartition des accidents selon leur localisation
+```{r}
+accidents_agg <- accidents |>
+  count(agg_libelle, name = "nb_accidents") |>
+  mutate(
+    pourcentage = round(
+      nb_accidents / sum(nb_accidents) * 100, 2
+    )
+  ) |>
+  arrange(desc(nb_accidents))
+
+accidents_agg
+```
+
+
+
+ *Visualisation graphique*
+```{r}
+ggplot(accidents_agg,
+       aes(x = agg_libelle, y = nb_accidents)) +
+  geom_col(fill = "steelblue") +
+  labs(
+    title = "Répartition des accidents selon la localisation (2024)",
+    x = "Localisation",
+    y = "Nombre d'accidents"
+  ) +
+  theme_minimal()
+```
+constat : près de 63 % des accidents recensés en 2024 ont eu lieu en agglomération, contre environ 37 % hors agglomération.
+
+
+### 4.3.4 Répartition des accidents selon les conditions atmospheriques
+
+ Etudier l'influence des conditions météorologiques au moment des accidents (temps normal,pluie,neige,brouillard,vent,etc)
+
+```{r}
+accidents_atm <- accidents |>
+  count(atm_libelle, name = "nb_accidents") |>
+  mutate(
+    pourcentage = round(
+      nb_accidents / sum(nb_accidents) * 100, 2
+    )
+  ) |>
+  arrange(desc(nb_accidents))
+
+accidents_atm
+```
+
+
+```{r}
+dim(accidents)
+n_distinct(accidents$Num_Acc)
+sum(duplicated(accidents$Num_Acc))
+```
+Probleme! car on doit avoir 54402 lignes pour zéro doublon
+
+*Restaurer la base propre*
+```{r}
+accidents <- readRDS("data/accidents_clean.rds")
+```
+
+```{r}
+dim(accidents)
+
+n_distinct(accidents$Num_Acc)
+
+sum(duplicated(accidents$Num_Acc))
+```
+```{r}
+dim(carac)
+dim(grav_acc)
+dim(age_acc)
+dim(vehicules_acc)
+```
+ok! les quatres tables sources sont correctes.
+
+ *Reconstruction de la table accidents*
+```{r}
+accidents <- carac |>
+  left_join(grav_acc, by = "Num_Acc") |>
+  left_join(age_acc, by = "Num_Acc") |>
+  left_join(vehicules_acc, by = "Num_Acc")
+```
+
+
+```{r}
+dim(accidents)
+
+n_distinct(accidents$Num_Acc)
+
+sum(duplicated(accidents$Num_Acc))
+
+colSums(is.na(accidents))
+```
+parfait!
+
+
+*Recréer les variables temporelle, les libellés et les coordonnées*
+```{r}
+library(lubridate)
+
+accidents <- accidents |>
+  mutate(
+    date = make_date(
+      year = an,
+      month = as.integer(mois),
+      day = jour
+    ),
+    heure = hour(hrmn),
+    minute = minute(hrmn),
+
+    periode = case_when(
+      heure >= 0 & heure < 6 ~ "Nuit",
+      heure >= 6 & heure < 12 ~ "Matin",
+      heure >= 12 & heure < 18 ~ "Après-midi",
+      heure >= 18 & heure < 24 ~ "Soir"
+    ),
+
+    lum_libelle = case_when(
+      lum == 1 ~ "Plein jour",
+      lum == 2 ~ "Crépuscule ou aube",
+      lum == 3 ~ "Nuit sans éclairage public",
+      lum == 4 ~ "Nuit avec éclairage public non allumé",
+      lum == 5 ~ "Nuit avec éclairage public allumé"
+    ),
+
+    agg_libelle = case_when(
+      agg == 1 ~ "Hors agglomération",
+      agg == 2 ~ "En agglomération"
+    ),
+
+    int_libelle = case_when(
+      int == 1 ~ "Hors intersection",
+      int == 2 ~ "Intersection en X",
+      int == 3 ~ "Intersection en T",
+      int == 4 ~ "Intersection en Y",
+      int == 5 ~ "Intersection à plus de 4 branches",
+      int == 6 ~ "Giratoire",
+      int == 7 ~ "Place",
+      int == 8 ~ "Passage à niveau",
+      int == 9 ~ "Autre intersection"
+    ),
+
+    atm_libelle = case_when(
+      atm == 1 ~ "Normale",
+      atm == 2 ~ "Pluie légère",
+      atm == 3 ~ "Pluie forte",
+      atm == 4 ~ "Neige - grêle",
+      atm == 5 ~ "Brouillard - fumée",
+      atm == 6 ~ "Vent fort - tempête",
+      atm == 7 ~ "Temps éblouissant",
+      atm == 8 ~ "Temps couvert",
+      atm == 9 ~ "Autre"
+    ),
+
+    col_libelle = case_when(
+      trimws(col) == "1" ~ "Deux véhicules - frontale",
+      trimws(col) == "2" ~ "Deux véhicules - arrière",
+      trimws(col) == "3" ~ "Deux véhicules - côté",
+      trimws(col) == "4" ~ "Trois véhicules et plus - en chaîne",
+      trimws(col) == "5" ~ "Trois véhicules et plus - collisions multiples",
+      trimws(col) == "6" ~ "Autre collision",
+      trimws(col) == "7" ~ "Sans collision",
+      trimws(col) == "-1" ~ "Non renseigné"
+    ),
+
+    latitude = as.numeric(gsub(",", ".", trimws(lat))),
+    longitude = as.numeric(gsub(",", ".", trimws(long)))
+  )
+```
+
+
+```{r}
+dim(accidents)
+
+n_distinct(accidents$Num_Acc)
+
+sum(duplicated(accidents$Num_Acc))
+```
+super!
+
+ *Recalcul de la répartition météorologique*
+```{r}
+accidents_atm <- accidents |>
+  count(atm_libelle, name = "nb_accidents") |>
+  mutate(
+    pourcentage = round(
+      nb_accidents / sum(nb_accidents) * 100, 2
+    )
+  ) |>
+  arrange(desc(nb_accidents))
+
+accidents_atm
+```
+
+constat : 76,84 % des accidents ont eu lieu lorsque les conditions atmosphériques étaient normales. La pluie légère arrive en deuxième position avec 12,46 %.
+
+
+ *Visualisation graphique*
+```{r}
+ggplot(accidents_atm,
+       aes(x = reorder(atm_libelle, nb_accidents),
+           y = nb_accidents)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Répartition des accidents selon les conditions atmosphériques (2024)",
+    x = "Conditions atmosphériques",
+    y = "Nombre d'accidents"
+  ) +
+  theme_minimal()
+```
+
+
+### 4.3.5.Répartition des accidents selon l'état de la surface de la chaussée
+
+Etudier les accidents qui se produisent davantage sur une chaussée :sèche,mouillée , enneigée, verglacée,etc
+```{r}
+table(lieux$surf, useNA = "ifany")
+```
+ces effectifs représentent des enrégistrement de lieux.
+
+*Corespondance officiel des codes*
+```{r}
+library(knitr)
+
+surf <- data.frame(
+  Code = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "-1"),
+  `État de la chaussée` = c("Normale (sèche)", "Mouillée", "Présence de flaques",
+                            "Inondée", "Enneigée", "Boue", "Verglacée",
+                            "Corps gras - huile", "Autre", "Non renseigné"),
+  check.names = FALSE
+)
+
+kable(surf, caption = "Correspondance officielle des codes : état de la chaussée (surf)")
+```
+
+*Créer la variable surf_libelle*
+```{r}
+lieux <- lieux |>
+  mutate(
+    surf_libelle = case_when(
+      trimws(as.character(surf)) == "1" ~ "Normale",
+      trimws(as.character(surf)) == "2" ~ "Mouillée",
+      trimws(as.character(surf)) == "3" ~ "Flaques",
+      trimws(as.character(surf)) == "4" ~ "Inondée",
+      trimws(as.character(surf)) == "5" ~ "Enneigée",
+      trimws(as.character(surf)) == "6" ~ "Boue",
+      trimws(as.character(surf)) == "7" ~ "Verglacée",
+      trimws(as.character(surf)) == "8" ~ "Corps gras - huile",
+      trimws(as.character(surf)) == "9" ~ "Autre",
+      trimws(as.character(surf)) == "-1" ~ "Non renseigné",
+      TRUE ~ "Code non documenté"
+    )
+  )
+```
+
+
+```{r}
+table(lieux$surf, lieux$surf_libelle)
+```
+
+
+
+
+ *compptage*
+```{r surf-acc}
+lieux_surf_acc <- lieux |>
+  distinct(Num_Acc, surf_libelle) |>
+  count(surf_libelle, name = "nb_accidents") |>
+  mutate(pourcentage = round(nb_accidents / n_distinct(lieux$Num_Acc) * 100, 2)) |>
+  arrange(desc(nb_accidents))
+
+lieux_surf_acc
+sum(lieux_surf_acc$nb_accidents)
+```
+
+Un même accident peut avoir plusieurs enregistrements dans la table lieux, avec des états de chaussée différents:  il peut donc apparaître dans plusieurs catégories. Le total (54 590) dépasse le nombre d'accidents (54 402) et les pourcentages ne s'additionnent pas à 100 %.
+
+
+**Remarque** :
+- 78,12 % des accidents sont associés à une chaussée normale.
+- 20,50 % sont associés à une chaussée mouillée.
+- Les autres états représentent des proportions beaucoup plus faibles.
+
+**Attention**: le total des effectifs est de 54 590, supérieur à 54 402. C'est normal ici : un même accident peut être associé à plusieurs états de chaussée. Les pourcentages ne sont donc pas exclusifs.
+
+
+ *Visualisation graphique*
+```{r}
+ggplot(lieux_surf_acc,
+       aes(x = reorder(surf_libelle, nb_accidents),
+           y = nb_accidents)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Répartition des accidents selon l'état de la chaussée (2024)",
+    x = "État de la chaussée",
+    y = "Nombre d'accidents"
+  ) +
+  theme_minimal()
+```
+
+### 4.3.6.Répartition des accidents semon le type d'intersection
+```{r}
+accidents_intersection <- accidents |>
+  count(int_libelle, name = "nb_accidents") |>
+  mutate(
+    pourcentage = round(
+      nb_accidents / sum(nb_accidents) * 100, 2
+    )
+  ) |>
+  arrange(desc(nb_accidents))
+
+accidents_intersection
+```
+
+```{r}
+sum(accidents_intersection$nb_accidents)
+```
+
+**constats**:63,58 % des accidents ont lieu hors intersection.
+Les intersections en T et en X représentent respectivement 11,86 % et 11,56 %.
+Les giratoires représentent près de 5 % des accidents.
+
+ *Visualisation graphique*
+```{r}
+ggplot(accidents_intersection,
+       aes(x = reorder(int_libelle, nb_accidents),
+           y = nb_accidents)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Répartition des accidents selon le type d'intersection (2024)",
+    x = "Type d'intersection",
+    y = "Nombre d'accidents"
+  ) +
+  theme_minimal()
+```
+
+### 4.3.7.Synthèse de l'axe 2: analyse géographique et environnementale
+
+On a réalisé les analyses suivantes :
+
+1. Répartition des accidents par département.
+2. Top 10 des communes les plus accidentogènes en nombre d'accidents.
+3. Accidents en agglomération et hors agglomération.
+4. Conditions atmosphériques.
+5. État de la chaussée.
+6. Type d'intersection.
+
+
+
+
+
+
+### 4.4.Axe 3: Analyse des profils des usagers
+
+
+On va étudier maintenant les personnes impliquées dans les accidents : age,sexe,gravité des blessures et catégories d'usagers.
+
+### 4.4.1.Répartition des usagers selon le sexe
+
+`
+
+
+```{r sexe-nettoyage}
+usagers <- usagers |>
+  mutate(sexe = as.integer(trimws(as.character(sexe))))
+
+table(usagers$sexe, useNA = "ifany")
+```
+
+
+
+
+```{r}
+usagers_sexe <- usagers |>
+  count(sexe, name = "nb_usagers") |>
+  mutate(
+    pourcentage = round(
+      nb_usagers / sum(nb_usagers) * 100, 2
+    )
+  ) |>
+  arrange(desc(nb_usagers))
+
+usagers_sexe
+```
+
+
+On a la répartition des 125187 usagers impliqués dans les accidents de la route en France (2024)
+Interprétation:
+Dans la nomenclature BAAC :
+- Code 1 : Homme
+- Code 2 : Femme
+- Code -1 : Non renseigné
+
+constat : les hommes représentent environ deux tiers des usagers impliqués dans les accidents recensés.
+
+*Visualisation graphique*
+```{r}
+usagers_sexe_graph <- usagers_sexe |>
+  mutate(
+    sexe_libelle = case_when(
+      sexe == "1" ~ "Homme",
+      sexe == "2" ~ "Femme",
+      sexe == "-1" ~ "Non renseigné"
+    )
+  )
+
+ggplot(usagers_sexe_graph,
+       aes(x = sexe_libelle, y = nb_usagers)) +
+  geom_col(fill = "steelblue") +
+  labs(
+    title = "Répartition des usagers selon le sexe (2024)",
+    x = "Sexe",
+    y = "Nombre d'usagers"
+  ) +
+  theme_minimal()
+```
+
+### 4.4.2. Analyse des usagrs selon l'age
+
+On va étudier les classes d'âge des personnes impliquées dans les accidents.
+On avait déjà créé la variable classe_age dans la table usagers. on va donc la réutiliser, sans refaire le calcul des âges.
+
+```{r}
+usagers_age <- usagers |>
+  count(classe_age, name = "nb_usagers") |>
+  mutate(
+    pourcentage = round(
+      nb_usagers / sum(nb_usagers) * 100, 2
+    )
+  ) |>
+  arrange(desc(nb_usagers))
+
+usagers_age
+```
+
+  constats :
+- Les adultes de 25 à 44 ans constituent la catégorie la plus représentée (34,94 %).
+- Les adultes de 25 à 64 ans représentent ensemble 58,69 % des usagers.
+- Les jeunes adultes de 18 à 24 ans représentent 18,66 %.
+
+
+ *Visualisation graphique*
+```{r}
+ggplot(usagers_age,
+       aes(x = reorder(classe_age, nb_usagers),
+           y = nb_usagers)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Répartition des usagers par classe d'âge (2024)",
+    x = "Classe d'âge",
+    y = "Nombre d'usagers"
+  ) +
+  theme_minimal()
+```
+
+### 4.4.3. Analyse de la gravité
+```{r}
+usagers_gravite <- usagers |>
+  count(grav, name = "nb_usagers") |>
+  mutate(
+    pourcentage = round(
+      nb_usagers / sum(nb_usagers) * 100, 2
+    )
+  ) |>
+  arrange(grav)
+
+usagers_gravite
+```
+On a les quatres catégories de gravité pour les 125187 usagers
+
+Signification des codes
+Selon la nomenclature BAAC :
+Code	Signification
+1	Indemne
+2	Tué
+3	Blessé hospitalisé
+4	Blessé léger
+
+Constats importants :
+- 42,27 % des usagers sont indemnes.
+- 57,73 % ont été blessés ou tués.
+- 18,02 % des usagers sont tués ou blessés hospitalisés.
+
+
+
+*Visualisation graphique*
+```{r}
+usagers_gravite_graph <- usagers_gravite |>
+  mutate(
+    grav_libelle = case_when(
+      grav == 1 ~ "Indemne",
+      grav == 2 ~ "Tué",
+      grav == 3 ~ "Blessé hospitalisé",
+      grav == 4 ~ "Blessé léger"
+    )
+  )
+
+ggplot(usagers_gravite_graph,
+       aes(x = reorder(grav_libelle, nb_usagers),
+           y = nb_usagers)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Répartition des usagers selon la gravité des blessures (2024)",
+    x = "Gravité",
+    y = "Nombre d'usagers"
+  ) +
+  theme_minimal()
+```
+
+
+
+
+
+
+```{r mortels-tues}
+data.frame(
+  Indicateur = c("Accidents mortels (au moins un usager tué)", "Usagers tués"),
+  Valeur = c(sum(accidents$tue), sum(usagers$grav == 2, na.rm = TRUE))
+)
+```
+
+Un accident mortel compte au moins un usager tué : 3 226 accidents. Un même accident pouvant faire plusieurs victimes, le nombre d'usagers tués (3 432) est plus élevé. Le tableau de bord affiche le nombre d'accidents mortels.
+
+
+
+
+
+
+### 4.4.4. Analyse des catégories d'usagers
+```{r}
+table(usagers$catu, useNA = "ifany")
+```
+On a trois catégories d'usagers pour 125187 personnes
+
+Signification des codes BAAC
+Code	Catégorie
+1	Conducteur
+2	Passager
+3	Piéton
+
+
+*Tableau de répartition*
+```{r}
+usagers_catu <- usagers |>
+  mutate(
+    catu_libelle = case_when(
+      catu == 1 ~ "Conducteur",
+      catu == 2 ~ "Passager",
+      catu == 3 ~ "Piéton"
+    )
+  ) |>
+  count(catu_libelle, name = "nb_usagers") |>
+  mutate(
+    pourcentage = round(
+      nb_usagers / sum(nb_usagers) * 100, 2
+    )
+  ) |>
+  arrange(desc(nb_usagers))
+
+usagers_catu
+```
+
+
+Constat principal : près de 74 % des personnes impliquées dans les accidents sont des conducteurs. Les passagers représentent 18,54 % et les piétons 7,51 %.
+
+ *Visualisation graphique*
+```{r}
+ggplot(usagers_catu,
+       aes(x = catu_libelle, y = nb_usagers)) +
+  geom_col(fill = "steelblue") +
+  labs(
+    title = "Répartition des usagers selon leur catégorie (2024)",
+    x = "Catégorie d'usager",
+    y = "Nombre d'usagers"
+  ) +
+  theme_minimal()
+```
+On va approfondir l’analyse en commençant par la gravité des blessures selon l’âge. L’objectif est de comparer, pour chaque tranche d’âge, la proportion d’usagers indemnes, tués, blessés hospitalisés et blessés légers.
+
+
+### 4.4.5.Préparation des libellés de gravité
+```{r}
+usagers <- usagers |>
+  mutate(
+    grav_libelle = case_when(
+      grav == 1 ~ "Indemne",
+      grav == 2 ~ "Tué",
+      grav == 3 ~ "Blessé hospitalisé",
+      grav == 4 ~ "Blessé léger",
+      TRUE ~ "Non renseigné"
+    )
+  )
+```
+
+
+```{r}
+table(usagers$grav_libelle, useNA = "ifany")
+```
+
+*Gravité selon la tranche d'age*
+```{r}
+gravite_age <- usagers |>
+  filter(!is.na(classe_age)) |>
+  count(classe_age, grav_libelle, name = "nb_usagers") |>
+  group_by(classe_age) |>
+  mutate(
+    pourcentage = round(
+      nb_usagers / sum(nb_usagers) * 100, 2
+    )
+  ) |>
+  ungroup() |>
+  arrange(classe_age, grav_libelle)
+```
+
+```{r}
+gravite_age
+```
+
+
+Quelques résultats intéressants ressortent :
+- Adolescents : 24,26 % sont blessés hospitalisés, la proportion la plus élevée après les seniors.
+- Adultes : 44,12 % sont indemnes.
+- Enfants : 53,87 % sont blessés légers.
+- Seniors : 22,46 % sont blessés hospitalisés et 6,61 % sont tués. C’est la proportion de décès la plus élevée parmi les tranches d’âge.
+- Jeunes adultes : 16,10 % sont blessés hospitalisés.
+
+
+ *Visualisation graphique*
+```{r}
+ggplot(gravite_age,
+       aes(x = classe_age,
+           y = pourcentage,
+           fill = grav_libelle)) +
+  geom_col() +
+  labs(
+    title = "Gravité des accidents selon l'âge des usagers (2024)",
+    x = "Tranche d'âge",
+    y = "Pourcentage des usagers",
+    fill = "Gravité"
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, 100, 20)
+  ) +
+  coord_cartesian(ylim = c(0, 100)) +
+  theme_minimal()
+```
+
+*Calcul des proportions par sexe*
+```{r}
+gravite_sexe <- usagers |>
+  filter(sexe %in% c("1", "2")) |>
+  mutate(
+    sexe_libelle = case_when(
+      sexe == "1" ~ "Hommes",
+      sexe == "2" ~ "Femmes"
+    )
+  ) |>
+  count(sexe_libelle, grav_libelle, name = "nb_usagers") |>
+  group_by(sexe_libelle) |>
+  mutate(
+    pourcentage = round(
+      nb_usagers / sum(nb_usagers) * 100, 2
+    )
+  ) |>
+  ungroup()
+
+gravite_sexe
+```
+
+**Interprétation des résultats**
+
+Quelques observations intéressantes :
+- Hommes : 3,18 % sont décédés, contre 1,98 % chez les femmes.
+- Hommes : 16,32 % sont blessés hospitalisés, contre 13,97 % chez les femmes.
+- Femmes : 47,07 % sont blessées légèrement, contre 37,42 % chez les hommes.
+- Hommes : 43,08 % sont indemnes, contre 36,99 % chez les femmes.
+
+ *Visualisation graphique*
+```{r}
+ggplot(gravite_sexe,
+       aes(x = sexe_libelle,
+           y = pourcentage,
+           fill = grav_libelle)) +
+  geom_col() +
+  labs(
+    title = "Gravité des accidents selon le sexe des usagers (2024)",
+    x = "Sexe des usagers",
+    y = "Pourcentage des usagers",
+    fill = "Gravité"
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, 100, 20)
+  ) +
+  coord_cartesian(ylim = c(0, 100)) +
+  theme_minimal()
+```
+### 4.4.6.Synthèse de l'axe 3:
+On a réalisé six analyses :
+Analyse	Résultat principal
+Sexe	66,99 % d'hommes
+Âge	34,94 % d'adultes (25–44 ans)
+Gravité	42,27 % d'usagers indemnes
+Catégorie	73,95 % de conducteurs
+Gravité selon l'âge	6,61 % de décès chez les seniors
+Gravité selon le sexe	3,18 % de décès chez les hommes, contre 1,98 % chez les femmes
+
+On a également créé les tableaux et graphiques correspondants.
+
+
+
+
+
+### 4.5.Axe 4: Analyse des véhicules
+
+On étudie :
+1. La répartition des véhicules selon leur catégorie (catv).
+2. Le nombre de véhicules impliqués par accident.
+3. Les types de véhicules les plus représentés.
+4. La gravité des accidents selon la catégorie du véhicule, si les données le permettent.
+
+### 4.5.1.Répartition des véhicules selon leur catégorie
+```{r}
+table(vehicules$catv, useNA = "ifany")
+```
+*Code	Signification*
+1	Bicyclette
+2	Cyclomoteur
+3	Voiturette
+7	Véhicule de tourisme
+10	Véhicule utilitaire
+13, 14, 15	Poids lourds
+16, 17	Tracteurs routiers
+20	Engin spécial
+21	Tracteur agricole
+30 à 36	Scooters, motos et quads
+37, 38	Autobus et autocars
+39, 40	Train et tramway
+41 à 43	Trois-roues motorisés
+50	EDP à moteur
+60	EDP sans moteur
+80	Vélo à assistance électrique
+99	Autre véhicule
+0	Véhicule indéterminable
+-1	Non renseigné
+
+
+observation : la catégorie 7 (véhicules de tourisme) domine largement avec 53 911 véhicules, soit environ 58,18 % du total.
+
+Avant de créer le graphique, on va transformer les codes numériques catv en libellés compréhensibles. La nomenclature officielle de l'ONISR distingue notamment les voitures, les utilitaires, les poids lourds, les deux-roues et les transports collectifs.
+
+
+*Création des libellés*
+```{r}
+vehicules <- vehicules |>
+  mutate(
+    catv_libelle = case_when(
+      catv == -1 ~ "Non renseigné",
+      catv == 0 ~ "Indéterminable",
+      catv == 1 ~ "Bicyclette",
+      catv == 2 ~ "Cyclomoteur",
+      catv == 3 ~ "Voiturette",
+      catv == 7 ~ "Véhicule de tourisme",
+      catv == 10 ~ "Véhicule utilitaire",
+      catv == 13 ~ "Poids lourd (3,5 à 7,5 t)",
+      catv == 14 ~ "Poids lourd (> 7,5 t)",
+      catv == 15 ~ "Poids lourd avec remorque",
+      catv == 16 ~ "Tracteur routier seul",
+      catv == 17 ~ "Tracteur routier avec semi-remorque",
+      catv == 20 ~ "Engin spécial",
+      catv == 21 ~ "Tracteur agricole",
+      catv == 30 ~ "Scooter ≤ 50 cm³",
+      catv == 31 ~ "Motocyclette 50–125 cm³",
+      catv == 32 ~ "Scooter 50–125 cm³",
+      catv == 33 ~ "Motocyclette > 125 cm³",
+      catv == 34 ~ "Scooter > 125 cm³",
+      catv == 35 ~ "Quad ≤ 50 cm³",
+      catv == 36 ~ "Quad > 50 cm³",
+      catv == 37 ~ "Autobus",
+      catv == 38 ~ "Autocar",
+      catv == 39 ~ "Train",
+      catv == 40 ~ "Tramway",
+      catv == 41 ~ "Trois-roues ≤ 50 cm³",
+      catv == 42 ~ "Trois-roues 50–125 cm³",
+      catv == 43 ~ "Trois-roues > 125 cm³",
+      catv == 50 ~ "EDP à moteur",
+      catv == 60 ~ "EDP sans moteur",
+      catv == 80 ~ "Vélo à assistance électrique",
+      catv == 99 ~ "Autre véhicule",
+      TRUE ~ "Autre code"
+    )
+  )
+```
+
+```{r}
+table(vehicules$catv_libelle)
+```
+
+*Verification*
+```{r}
+class(vehicules$catv)
+```
+
+```{r}
+vehicules |>
+  filter(catv_libelle == "Autre code") |>
+  select(Num_Acc, catv, catv_libelle)
+```
+le véhicule concerné possède bien le code -1 ,donc il doit etre classé dans Non renseigné
+
+
+*Correction*
+```{r}
+vehicules <- vehicules |>
+  mutate(
+    catv = trimws(catv),
+    catv_libelle = case_when(
+      catv == "-1" ~ "Non renseigné",
+      catv == "0" ~ "Indéterminable",
+      TRUE ~ catv_libelle
+    )
+  )
+```
+
+
+
+```{r}
+table(vehicules$catv_libelle)
+```
+Prafait!
+
+### 4.5.2.Répartition des véhicules: calcul du nombre et pourcentage de chaque catégorie de véhicule 
+```{r}
+vehicules_repartition <- vehicules |>
+  count(catv_libelle, name = "nb_vehicules") |>
+  mutate(
+    pourcentage = round(
+      nb_vehicules / sum(nb_vehicules) * 100, 2
+    )
+  ) |>
+  arrange(desc(nb_vehicules))
+
+vehicules_repartition
+```
+
+La catégorie dominante est clairement le véhicule de tourisme, avec 53 911 véhicules, soit 58,17 % du parc impliqué dans les accidents recensés.
+
+*Graphe des 10 principales catégories de véhicules impliqués*
+```{r}
+vehicules_top10 <- vehicules_repartition |>
+  slice_max(
+    order_by = nb_vehicules,
+    n = 10
+  )
+
+ggplot(vehicules_top10,
+       aes(x = reorder(catv_libelle, nb_vehicules),
+           y = nb_vehicules)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Les 10 principales catégories de véhicules impliqués (2024)",
+    x = "Catégorie de véhicule",
+    y = "Nombre de véhicules"
+  ) +
+  theme_minimal()
+```
+
+### 4.5.3.Répartition des accidents selon le nombre de véhicules impliqués
+
+On avait déjà créé vehicules_acc, qui contient le nombre de véhicules par Num_Acc.On va l'utiliser directement, sans refaire de jointure.
+
+
+```{r}
+repartition_nb_vehicules <- vehicules_acc |>
+  count(nb_vehicules, name = "nb_accidents") |>
+  mutate(
+    pourcentage = round(
+      nb_accidents / sum(nb_accidents) * 100, 2
+    )
+  ) |>
+  arrange(nb_vehicules)
+
+repartition_nb_vehicules
+```
+Interprétation des résultats
+- 55,09 % des accidents impliquent 2 véhicules (29 968 accidents).
+- 38,20 % impliquent un seul véhicule (20 780 accidents).
+- 5,35 % impliquent 3 véhicules.
+- Les accidents impliquant 4 véhicules ou plus restent très minoritaires.
+Au total, environ 93,29 % des accidents impliquent un ou deux véhicules.
+
+*Visualisation graphique*
+```{r}
+ggplot(repartition_nb_vehicules,
+       aes(x = factor(nb_vehicules),
+           y = nb_accidents)) +
+  geom_col(fill = "steelblue") +
+  labs(
+    title = "Répartition des accidents selon le nombre de véhicules impliqués (2024)",
+    x = "Nombre de véhicules par accident",
+    y = "Nombre d'accidents"
+  ) +
+  theme_minimal()
+```
+
+
+### 4.5.4. Gravité des accidents selon la catégorie du véhicule
+
+On va déterminer, pour chaque catégorie de véhicule, la proportion d'accidents ayant entraîné au moins un décès ou une hospitalisation.
+
+Précision : un accident peut impliquer plusieurs catégories de véhicules. Il pourra donc apparaître dans plusieurs catégories.On ne doit pas compter artificiellement chaque véhicule comme un accident distinct.
+
+
+
+```{r}
+gravite_vehicules <- vehicules |>
+  distinct(Num_Acc, catv_libelle) |>
+  left_join(
+    grav_acc |> select(Num_Acc, grave),
+    by = "Num_Acc"
+  ) |>
+  group_by(catv_libelle) |>
+  summarise(
+    nb_accidents = n_distinct(Num_Acc),
+    nb_accidents_graves = n_distinct(Num_Acc[grave %in% TRUE]),
+    .groups = "drop"
+  ) |>
+  mutate(
+    pourcentage_graves = round(
+      nb_accidents_graves / nb_accidents * 100, 2
+    )
+  ) |>
+  arrange(desc(pourcentage_graves))
+
+gravite_vehicules
+```
+
+
+*Visualisation graphique*
+```{r}
+gravite_vehicules_top <- gravite_vehicules |>
+  filter(
+    nb_accidents >= 100,
+    catv_libelle != "Non renseigné"
+  ) |>
+  arrange(pourcentage_graves)
+
+ggplot(
+  gravite_vehicules_top,
+  aes(
+    x = reorder(catv_libelle, pourcentage_graves),
+    y = pourcentage_graves
+  )
+) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Part des accidents graves selon la catégorie de véhicule (2024)",
+    subtitle = "Catégories ayant au moins 100 accidents",
+    x = "Catégorie de véhicule",
+    y = "Accidents graves (%)"
+  ) +
+  theme_minimal()
+```
+ **Quatre observations importantes à retenir.**
+
+1. Les véhicules lourds et certains véhicules motorisés présentent des proportions élevées d'accidents graves.
+- Tracteur routier avec semi-remorque : 54,99 %.
+- Poids lourd avec remorque : 54,52 %.
+- Motocyclette de plus de 125 cm³ : 46,87 %.
+- Poids lourd de plus de 7,5 tonnes : 46,23 %.
+Cela met en évidence une proportion importante d'accidents graves parmi les accidents impliquant ces catégories.
+
+2. Les véhicules de tourisme sont très représentés dans les accidents, mais leur proportion d'accidents graves est plus modérée.
+
+Ils représentent 40 718 accidents dans notre tableau, avec 34,55 % d'accidents graves.
+C'est une distinction importante : une catégorie peut être très fréquente sans présenter le taux de gravité le plus élevé.
+
+3. Certaines catégories affichent des proportions plus faibles.
+- EDP sans moteur : 12,30 %.
+- Autobus : 20,72 %.
+- Scooter de moins de 50 cm³ : 21,46 %.
+- EDP à moteur : 22,20 %.
+Ces chiffres ne signifient pas nécessairement que ces véhicules sont intrinsèquement plus sûrs. Ils décrivent uniquement les accidents observés dans notre base.
+
+4. Les petits effectifs doivent être interprétés avec prudence.
+
+Par exemple :
+- Train : 27 accidents graves sur 31, soit 87,10 %.
+- Quad de moins de 50 cm³ : 8 accidents graves sur 12, soit 66,67 %.
+Ces proportions sont élevées, mais les effectifs sont faibles. Il ne faut donc pas en tirer de conclusions générales.
+
+
+### 4.5.5. Synthèse de l'axe 4 — Analyse des véhicules
+
+On a réalisé trois analyses :
+
+Analyse	Résultat principal
+Catégories de véhicules	58,17 % de véhicules de tourisme
+Nombre de véhicules par accident	55,09 % impliquent deux véhicules
+Gravité selon la catégorie	54,99 % pour les tracteurs routiers avec semi-remorque
+
+Les trois graphiques sont validés.
+Étape suivante — Synthèse générale de l'analyse exploratoire
+Nous avons maintenant terminé les quatre axes de notre EDA :
+1. Analyse temporelle.
+2. Analyse géographique et environnementale.
+3. Profil des usagers.
+4. Analyse des véhicules.
+
+
+
+
+
+### 5.PREPARATION DU TABLEAU DE BORD SHINY
+
+ *Vérification de la table principale*
+```{r}
+dim(accidents)
+n_distinct(accidents$Num_Acc)
+file.exists("data/accidents_clean.rds")
+```
+
+
+### 5.1. Synthese generale de l'EDA
+
+On va construire un tableau récapitulatif des indicateurs clés de notre étude, sans refaire les graphiques déjà validés.
+
+*Première manipulation *: créer un tableau avec les principaux indicateurs de notre base.
+```{r}
+synthese_globale <- tibble(
+  indicateur = c(
+    "Nombre total d'accidents",
+    "Accidents graves",
+    "Accidents mortels",
+    "Accidents en agglomération",
+    "Accidents hors agglomération",
+    "Accidents impliquant 1 véhicule",
+    "Accidents impliquant 2 véhicules"
+  ),
+  valeur = c(
+    n_distinct(accidents$Num_Acc),
+    sum(accidents$grave, na.rm = TRUE),
+    sum(accidents$tue, na.rm = TRUE),
+    sum(accidents$agg_libelle == "En agglomération", na.rm = TRUE),
+    sum(accidents$agg_libelle == "Hors agglomération", na.rm = TRUE),
+    sum(vehicules_acc$nb_vehicules == 1, na.rm = TRUE),
+    sum(vehicules_acc$nb_vehicules == 2, na.rm = TRUE)
+  )
+)
+
+synthese_globale
+```
+
+Attention : un accident grave désigne ici un accident impliquant au moins un usager tué ou hospitalisé. Un accident mortel désigne un accident impliquant au moins un usager décédé.
+
+*Calcul des pourcentages*
+```{r}
+synthese_globale <- synthese_globale |>
+  mutate(
+    pourcentage = round(
+      valeur / 54402 * 100,
+      2
+    )
+  )
+
+synthese_globale
+```
+
+
+### 5.2.Préparation des conclusions statistiques
+```{r}
+names(accidents)
+```
+ 
+*Rédaction des principaux enseignements de l'EDA* :
+
+Voici une première synthèse des résultats, qu'on va intégrer à la présentation du projet.
+
+1. Dimension temporelle
+- Le mois de juillet enregistre le plus grand nombre d'accidents : 5 209.
+- L'heure la plus représentée est 17 h : 4 607 accidents.
+- L'après-midi concentre 36,94 % des accidents.
+2. Dimension géographique et environnementale
+- Paris (75) est le département qui enregistre le plus d'accidents : 4 191.
+- 62,52 % des accidents se produisent en agglomération.
+- La chaussée est déclarée normale dans 78,12 % des enregistrements de surface.
+3. Profil des usagers
+- Les hommes représentent 66,99 % des usagers.
+- Les adultes de 25 à 44 ans constituent la catégorie d'âge la plus représentée.
+- Les seniors présentent une proportion de décès de 6,61 % parmi les usagers de cette catégorie d'âge.
+4. Dimension véhicule
+- Les véhicules de tourisme représentent 58,17 % des véhicules impliqués.
+- 55,09 % des accidents impliquent deux véhicules.
+- Les catégories de véhicules présentent des proportions d'accidents graves très différentes.
+Ces résultats sont descriptifs : ils mettent en évidence des associations et des tendances, mais ne démontrent pas à eux seuls des relations de causalité.
+
+
+
+*Rédaction de la synthèse générale* :
+on va sauvegarder le tableau synthese_globale dans le dossier data/,afin de conserver les indicateurs calculés et de pouvoir les réutiliser plus tard
+
+```{r}
+write.csv(
+  synthese_globale,
+  "data/synthese_globale.csv",
+  row.names = FALSE,
+  fileEncoding = "UTF-8"
+)
+```
+
+
+```{r}
+file.exists("data/synthese_globale.csv")
+```
+
+*Préparer la structure du projet*
+Vérification de l'organism des dossiers
+
+```{r}
+list.files()
+```
+
+
+### 6.Création des dossiers R et app
+```{r}
+dir.create("R", showWarnings = FALSE)
+dir.create("app", showWarnings = FALSE)
+```
+
+```{r}
+list.files()
+```
+
+
+### 6.1.Création du fichier de l'application de R Shiny
+```{r}
+file.create("app/app.R")
+```
+
+```{r}
+file.exists("app/app.R")
+```
+
+### 6.2. Vérification de l'installation de Shiny
+
+ *Vérification des pakages de shiny*
+```{r}
+if (!requireNamespace("shiny", quietly = TRUE)) {
+  install.packages("shiny")
+}
+```
+
+
+```{r}
+library(shiny)
+packageVersion("shiny")
+```
+
+*Installation des packages nécessaires au tableau de bord*
+```{r}
+packages <- c(
+  "shiny",
+  "dplyr",
+  "ggplot2",
+  "plotly",
+  "leaflet",
+  "DT",
+  "lubridate",
+  "readr"
+)
+
+packages_manquants <- packages[
+  !packages %in% installed.packages()[, "Package"]
+]
+
+if (length(packages_manquants) > 0) {
+  install.packages(packages_manquants)
+}
+```
+
+
+```{r}
+sapply(packages, requireNamespace, quietly = TRUE)
+```
+
+*Définir le contenu de notre tableau de bord*
+
+Avant d'écrire le code, voici la structure que nous allons construire :
+Accidents de la route en France — 2024
+PROJET DATA SCIENCE · BAAC 2024
+54 402
+Accidents recensés
+19 658
+Accidents graves
+3 226
+Accidents mortels
+62,52 %
+En agglomération
+
+
+
+Rubriques de navigation
+- Vue générale
+- Analyse temporelle
+- Analyse géographique
+- Profil des usagers
+- Analyse des véhicules
+- Exploration des données
+
+
+
+```{r sauvegarde-finale}
+colonnes_app <- c("Num_Acc", "dep", "mois", "date", "heure", "agg", "agg_libelle",
+                  "grave", "tue", "latitude", "longitude")
+stopifnot(all(colonnes_app %in% names(accidents)),
+          n_distinct(accidents$Num_Acc) == nrow(accidents))
+
+dir.create("data", showWarnings = FALSE)
+saveRDS(accidents, "data/accidents_clean.rds")
+saveRDS(usagers,   "data/usagers_2024.rds")
+```
