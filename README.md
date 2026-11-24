@@ -165,6 +165,13 @@ Pour générer le rapport HTML à partir du fichier R Markdown :
 rmarkdown::render("accidents-routiers.Rmd")
 
 
+## Démonstration en ligne
+
+L'application interactive est accessible ici :
+
+👉 [Accéder au tableau de bord – Analyse des accidents de la route](https://senesaliou585.shinyapps.io/analyse-accidents-route-france/)
+
+
 ## Auteur
 
 **Saliou Sène**
