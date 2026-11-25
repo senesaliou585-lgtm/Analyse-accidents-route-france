@@ -144,7 +144,7 @@ projet S/
 ├── README.md
 └── projet S.Rproj
 
-<text color="secondary" size="xs">Remarque : cette arborescence décrit l'organisation prévue du projet. Vérifie que les noms des fichiers correspondent exactement à ceux présents dans ton dossier avant de publier le dépôt.</text>
+<text color="secondary" size="xs">Remarque : cette arborescence décrit l'organisation prévue du projet. </text>
 
 ### Étape 9 — Installation et exécution
 
