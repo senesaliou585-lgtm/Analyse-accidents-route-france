@@ -21,9 +21,8 @@ Plus précisément, cette analyse vise à :
 - Analyser leur répartition géographique selon les départements et les communes.
 - Examiner les conditions environnementales et les caractéristiques des lieux où surviennent les accidents.
 - Étudier les profils des usagers impliqués, notamment selon leur âge et la gravité des blessures.
-- Analyser les catégories de véhicules impliqués et le nombre de véhicules par accident.
 - Mettre en évidence les principaux facteurs descriptifs associés à la gravité des accidents.
-
+  
 L'ensemble de ces analyses est complété par un tableau de bord interactif permettant d'explorer les données selon différents critères.
 
 ## Sources et description des données
