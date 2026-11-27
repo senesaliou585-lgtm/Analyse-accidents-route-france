@@ -93,11 +93,6 @@ L'analyse exploratoire est organisée autour de quatre axes principaux :
 - Étude de la gravité des accidents et des blessures.
 - Analyse des catégories d'usagers.
 
-### Axe 4 — Analyse des véhicules
-- Répartition des véhicules selon leur catégorie.
-- Nombre de véhicules impliqués par accident.
-- Analyse de la gravité des accidents selon la catégorie de véhicule.
-
 ## Tableau de bord interactif
 
 Une application interactive a été développée avec **Shiny** afin de faciliter l'exploration des données et la consultation des résultats.
